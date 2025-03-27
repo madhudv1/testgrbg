@@ -1,0 +1,15 @@
+Initialize a new Git repository in the "development" directory
+    cd development && git init && git add . && git status
+
+Reset the Git staging area
+    git reset && git add . && git status
+
+Add files and commit
+    git add . 
+    git commit -m "Initial commit: grbgtest with Google Drive integration and chat interface"
+
+Add the remote repository:
+    git remote add origin https://github.com/madhudv1/testgrbg.git
+
+Push the code to GitHub
+    git push -u origin main

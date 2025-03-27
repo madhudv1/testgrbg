@@ -1,0 +1,5 @@
+Install test dependencies
+    pip install -r requirements-test.txt
+
+Runt he tests
+    pytest tests/test_chat.py -v
