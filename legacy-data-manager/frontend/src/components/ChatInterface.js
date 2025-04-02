@@ -222,56 +222,106 @@ const ChatInterface = () => {
   }
 
   return (
-    <div className="bg-white shadow rounded-lg">
-      <div className="p-4 border-b">
-        <h2 className="text-xl font-semibold">Chat Interface</h2>
+    <div className="bg-gray-800 bg-opacity-50 backdrop-blur-xl shadow-2xl rounded-xl border border-gray-700/50">
+      <div className="p-6 border-b border-gray-700/50">
+        <div className="flex items-center space-x-3">
+          <div className="w-3 h-3 rounded-full bg-gradient-to-r from-blue-300 to-blue-600"></div>
+          <h2 className="text-xl font-semibold text-white">Legacy Data Manager</h2>
+        </div>
       </div>
-      <div className="h-96 overflow-y-auto p-4">
+      
+      <div className="h-[32rem] overflow-y-auto p-6 bg-gray-900/50 space-y-6">
         {messages.map((message, index) => (
           <div
             key={index}
-            className={`mb-4 ${message.type === 'user' ? 'text-right' : 'text-left'}`}
+            className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'} group`}
           >
+            {message.type !== 'user' && (
+              <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-300 to-blue-600 flex items-center justify-center text-white text-sm font-medium mr-3 shadow-lg">
+                A
+              </div>
+            )}
             <div
-              className={`inline-block p-3 rounded-lg ${
-                message.type === 'user'
-                  ? 'bg-blue-500 text-white'
-                  : message.type === 'error'
-                  ? 'bg-red-100 text-red-700'
-                  : 'bg-gray-100 text-gray-800'
-              }`}
+              className={`max-w-[80%] ${message.type === 'user' ? 'order-1' : 'order-2'}`}
             >
-              <pre className="whitespace-pre-wrap">{message.content}</pre>
+              <div
+                className={`p-4 rounded-2xl shadow-lg backdrop-blur-sm ${
+                  message.type === 'user'
+                    ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white ml-4'
+                    : message.type === 'error'
+                    ? 'bg-red-500/10 border border-red-500/50 text-red-500'
+                    : 'bg-gradient-to-r from-blue-300 via-blue-400 to-blue-600 text-white'
+                }`}
+              >
+                <pre className="whitespace-pre-wrap font-sans">{message.content}</pre>
+              </div>
+              <div className={`text-xs text-gray-400 mt-1 ${message.type === 'user' ? 'text-right mr-4' : 'ml-4'}`}>
+                {new Date().toLocaleTimeString()}
+              </div>
             </div>
+            {message.type === 'user' && (
+              <div className="w-8 h-8 rounded-full bg-gradient-to-r from-pink-500 to-purple-600 flex items-center justify-center text-white text-sm font-medium ml-3 shadow-lg">
+                U
+              </div>
+            )}
           </div>
         ))}
         {isLoading && (
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+          <div className="flex items-center justify-center space-x-2">
+            <div className="w-2 h-2 rounded-full bg-blue-400 animate-bounce [animation-delay:-0.3s]"></div>
+            <div className="w-2 h-2 rounded-full bg-blue-400 animate-bounce [animation-delay:-0.15s]"></div>
+            <div className="w-2 h-2 rounded-full bg-blue-400 animate-bounce"></div>
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
-      <form onSubmit={handleSubmit} className="p-4 border-t">
-        <div className="flex">
+
+      <div className="p-6 border-t border-gray-700/50 bg-gray-800/50">
+        <div className="mb-4 flex flex-wrap gap-2">
+          <button 
+            onClick={() => setInput('help')}
+            className="px-3 py-1 text-sm bg-gradient-to-r from-blue-300/10 to-blue-600/10 hover:from-blue-300/20 hover:to-blue-600/20 text-gray-300 rounded-full transition-all border border-blue-500/20"
+          >
+            help
+          </button>
+          <button 
+            onClick={() => setInput('directories')}
+            className="px-3 py-1 text-sm bg-gradient-to-r from-blue-300/10 to-blue-600/10 hover:from-blue-300/20 hover:to-blue-600/20 text-gray-300 rounded-full transition-all border border-blue-500/20"
+          >
+            directories
+          </button>
+          <button 
+            onClick={() => setInput('status')}
+            className="px-3 py-1 text-sm bg-gradient-to-r from-blue-300/10 to-blue-600/10 hover:from-blue-300/20 hover:to-blue-600/20 text-gray-300 rounded-full transition-all border border-blue-500/20"
+          >
+            status
+          </button>
+          <button 
+            onClick={() => setInput('inactive')}
+            className="px-3 py-1 text-sm bg-gradient-to-r from-blue-300/10 to-blue-600/10 hover:from-blue-300/20 hover:to-blue-600/20 text-gray-300 rounded-full transition-all border border-blue-500/20"
+          >
+            inactive
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="relative">
           <input
             ref={inputRef}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Type a command..."
-            className="flex-1 p-2 border rounded-l focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Type a command or click one above..."
+            className="w-full p-4 bg-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400/50 focus:border-transparent pr-24"
             disabled={isLoading}
           />
           <button
             type="submit"
             disabled={isLoading}
-            className="bg-blue-500 text-white px-4 py-2 rounded-r hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="absolute right-2 top-2 px-4 py-2 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-lg hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-purple-500/50 disabled:opacity-50 transition-all duration-200 backdrop-blur-sm"
           >
             Send
           </button>
-        </div>
-      </form>
+        </form>
+      </div>
     </div>
   );
 };
