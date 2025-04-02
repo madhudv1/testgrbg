@@ -12,7 +12,7 @@ chat_service = ChatService(drive_service)
 class ChatMessage(BaseModel):
     message: str
 
-@router.post("/message")
+@router.post("/messages")
 async def process_message(chat_message: ChatMessage):
     """Process a chat message and return a response."""
     try:

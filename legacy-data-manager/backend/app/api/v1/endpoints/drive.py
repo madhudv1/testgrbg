@@ -3,6 +3,7 @@ from typing import Dict, List
 from ....services.google_drive import GoogleDriveService
 from ....core.config import settings
 import logging
+from ....services.genai_service import GenAIService
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -10,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 drive_service = GoogleDriveService()
+genai_service = GenAIService()
 
 @router.get("/auth/url")
 async def get_auth_url():
@@ -66,4 +68,65 @@ async def get_file_metadata(file_id: str):
         metadata = drive_service.get_file_metadata(file_id)
         return metadata
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/directories/{folder_id}/files")
+async def list_directory_files(folder_id: str, page_size: int = 100):
+    """List files in a specific directory."""
+    if not drive_service.is_authenticated():
+        raise HTTPException(status_code=401, detail="Not authenticated. Please authenticate first.")
+    try:
+        files = drive_service.list_directory(folder_id, page_size)
+        return {"files": files}
+    except Exception as e:
+        logger.error(f"Error listing directory files: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/directories/{folder_id}/analyze")
+async def analyze_directory(folder_id: str):
+    """Analyze all files in a directory using GenAI."""
+    if not drive_service.is_authenticated():
+        raise HTTPException(status_code=401, detail="Not authenticated. Please authenticate first.")
+    try:
+        # Get all files in the directory
+        files = drive_service.list_directory(folder_id)
+        
+        # Analyze files using GenAI
+        analysis_results = await genai_service.analyze_directory(files)
+        
+        return {
+            "folder_id": folder_id,
+            "total_files": len(files),
+            "analyzed_files": len(analysis_results),
+            "results": analysis_results
+        }
+    except Exception as e:
+        logger.error(f"Error analyzing directory: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/directories/{folder_id}/categorize")
+async def categorize_directory(folder_id: str, page_size: int = 100):
+    """Get categorized files in a specific directory."""
+    if not drive_service.is_authenticated():
+        raise HTTPException(status_code=401, detail="Not authenticated. Please authenticate first.")
+    try:
+        categories = drive_service.categorize_directory(folder_id, page_size)
+        return {
+            "folder_id": folder_id,
+            "categories": categories
+        }
+    except Exception as e:
+        logger.error(f"Error categorizing directory: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/directories")
+async def list_directories(page_size: int = 100):
+    """List directories (folders) from Google Drive."""
+    if not drive_service.is_authenticated():
+        raise HTTPException(status_code=401, detail="Not authenticated. Please authenticate first.")
+    try:
+        directories = drive_service.list_directories(page_size)
+        return {"directories": directories}
+    except Exception as e:
+        logger.error(f"Error listing directories: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e)) 

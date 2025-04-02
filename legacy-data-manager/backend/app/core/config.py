@@ -17,10 +17,10 @@ class Settings(BaseSettings):
     # Google Drive Settings
     GOOGLE_CLIENT_ID: str
     GOOGLE_CLIENT_SECRET: str
-    GOOGLE_REDIRECT_URI: str
+    GOOGLE_REDIRECT_URI: str = "http://localhost:3000/auth/callback"
     
-    # OpenAI Settings
-    OPENAI_API_KEY: str
+    # Hugging Face Settings
+    HUGGINGFACE_API_TOKEN: str = ""
     
     class Config:
         env_file = ".env"

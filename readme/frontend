@@ -1,5 +1,5 @@
 
-Install Node.js
+#Install Node.js
     echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zshrc && source ~/.zshrc
     brew install node
     ls /opt/homebrew/bin/node
@@ -10,5 +10,5 @@ Set environment
 
 
 Start frontend server
-    cd development/legacy-data-manager/frontend
+    cd /Users/madhuvohra/Madhu/grbg/development/legacy-data-manager/frontend
     npm start

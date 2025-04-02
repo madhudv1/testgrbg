@@ -1,29 +1,30 @@
-cd grbg
-Start uvicorn
-    cd development/legacy-data-manager/backend
+# Make sure you're in the backend directory with the venv activated
+    cd /Users/madhuvohra/Madhu/grbg/development/legacy-data-manager/backend
     source venv/bin/activate
+# Start the server
+    uvicorn app.main:app --reload --port 8000
     uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --log-level debug
     uvicorn app.main:app --reload
 
-FastAPI LegacyData
+#FastAPI LegacyData
     http://localhost:8000/docs
 
-    Check auth status
-        auth/status
+#Check auth status
+    auth/status
 
-    Authentication
-        auth/url - get the url
-        Copy/paste the url and authenticate with google
+#Authentication
+    auth/url - get the url
+    Copy/paste the url and authenticate with google
 
-    List files
-        drive/files
+#List files
+    drive/files
 
-    Inactive files
-        drive/files/Inactive
+#Inactive files
+    drive/files/Inactive
 
-    chatbot
-        chat/messages
-            {"message": "list"} - to see recent files
-            {"message": "inactive"} - to see inactive files
-            {"message": "find report"} - to search for files containing "report"
-            {"message": "status"} - to check authentication status
+#chatbot
+    chat/messages
+        {"message": "list"} - to see recent files
+        {"message": "inactive"} - to see inactive files
+        {"message": "find report"} - to search for files containing "report"
+        {"message": "status"} - to check authentication status
