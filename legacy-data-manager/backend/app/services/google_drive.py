@@ -9,6 +9,9 @@ from ..core.config import settings
 import logging
 import io
 import PyPDF2
+import os
+import json
+import pickle
 
 logger = logging.getLogger(__name__)
 
@@ -17,13 +20,47 @@ class GoogleDriveService:
         'https://www.googleapis.com/auth/drive.readonly',
         'https://www.googleapis.com/auth/drive.file'
     ]
+    TOKEN_FILE = 'token.pickle'
 
     def __init__(self):
         self.credentials = None
         self.service = None
+        self.load_credentials()
+        logger.info(f"Token file path: {self.TOKEN_FILE}")
+
+    def load_credentials(self):
+        """Load credentials from token file if it exists."""
+        if os.path.exists(self.TOKEN_FILE):
+            try:
+                with open(self.TOKEN_FILE, 'rb') as token:
+                    self.credentials = pickle.load(token)
+                logger.info("Loaded credentials from token file")
+            except Exception as e:
+                logger.error(f"Error loading credentials: {e}")
+                self.credentials = None
+        else:
+            logger.info("No token file found")
+
+    def save_credentials(self):
+        """Save credentials to token file."""
+        if self.credentials:
+            try:
+                with open(self.TOKEN_FILE, 'wb') as token:
+                    pickle.dump(self.credentials, token)
+                logger.info("Saved credentials to token file")
+            except Exception as e:
+                logger.error(f"Error saving credentials: {e}")
 
     def is_authenticated(self) -> bool:
         """Check if the service is authenticated."""
+        if self.credentials and self.credentials.expired:
+            try:
+                self.credentials.refresh(Request())
+                self.save_credentials()
+                return True
+            except Exception as e:
+                logger.error(f"Error refreshing credentials: {e}")
+                return False
         return self.credentials is not None and not self.credentials.expired
 
     def get_auth_url(self) -> str:
@@ -67,7 +104,18 @@ class GoogleDriveService:
         )
         flow.redirect_uri = settings.GOOGLE_REDIRECT_URI
         flow.fetch_token(code=code)
-        self.credentials = flow.credentials
+        
+        # Create a proper Credentials object with all necessary fields
+        self.credentials = Credentials(
+            token=flow.credentials.token,
+            refresh_token=flow.credentials.refresh_token,
+            token_uri=flow.credentials.token_uri,
+            client_id=settings.GOOGLE_CLIENT_ID,
+            client_secret=settings.GOOGLE_CLIENT_SECRET,
+            scopes=flow.credentials.scopes
+        )
+        
+        self.save_credentials()  # Save credentials after getting them
         return self.credentials
 
     def build_service(self):

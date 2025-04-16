@@ -1,0 +1,241 @@
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 1rem;
+  gap: 1rem;
+}
+
+.dashboard-content {
+  display: flex;
+  flex: 1;
+  gap: 1rem;
+  overflow: hidden;
+}
+
+.directory-section {
+  flex: 0 0 300px;
+  overflow-y: auto;
+}
+
+.explorer-section {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Directory List Styles */
+.directory-list {
+  background-color: var(--background-color);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  height: 100%;
+}
+
+.directory-item {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.directory-item-content {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.directory-icon {
+  width: 2rem;
+  height: 2rem;
+  color: var(--primary-color);
+}
+
+.directory-info {
+  flex: 1;
+}
+
+.directory-name {
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.directory-path {
+  font-size: 0.875rem;
+  color: var(--text-secondary-color);
+}
+
+.explore-button {
+  padding: 0.5rem 1rem;
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.explore-button:hover {
+  background-color: var(--primary-color-dark);
+}
+
+/* Directory Explorer Styles */
+.directory-explorer {
+  background-color: var(--background-color);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.explorer-header {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.explorer-header h2 {
+  margin: 0;
+  color: var(--text-color);
+}
+
+.explorer-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.analyze-button {
+  padding: 0.5rem 1rem;
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.analyze-button:hover:not(:disabled) {
+  background-color: var(--primary-color-dark);
+}
+
+.analyze-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.explorer-content {
+  flex: 1;
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.files-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 1rem;
+}
+
+.file-card {
+  background-color: var(--card-background);
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  transition: transform 0.2s;
+}
+
+.file-card:hover {
+  transform: translateY(-2px);
+}
+
+.file-icon {
+  font-size: 1.5rem;
+}
+
+.file-info {
+  flex: 1;
+}
+
+.file-name {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text-color);
+}
+
+.file-meta {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary-color);
+}
+
+.analysis-results {
+  margin-top: 2rem;
+}
+
+.results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.result-card {
+  background-color: var(--card-background);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.result-card h4 {
+  margin: 0 0 1rem;
+  color: var(--text-color);
+}
+
+.result-details {
+  font-size: 0.875rem;
+  color: var(--text-secondary-color);
+}
+
+.result-details p {
+  margin: 0.25rem 0;
+}
+
+.loading-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.spinner {
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.error-message {
+  background-color: var(--error-background);
+  color: var(--error-color);
+  padding: 1rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.no-directory-selected,
+.no-files {
+  text-align: center;
+  color: var(--text-secondary-color);
+  padding: 2rem;
+}
+
+/* Add any existing styles below */ 

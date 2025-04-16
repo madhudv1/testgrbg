@@ -1,0 +1,63 @@
+.google-drive-auth {
+  padding: 1rem;
+  background-color: var(--background-color);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.auth-button {
+  padding: 0.75rem 1.5rem;
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.auth-button:hover {
+  background-color: var(--primary-hover-color);
+}
+
+.auth-button:disabled {
+  background-color: var(--disabled-color);
+  cursor: not-allowed;
+}
+
+.auth-success {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.auth-status {
+  color: var(--success-color);
+  font-weight: 500;
+}
+
+.auth-refresh {
+  padding: 0.5rem 1rem;
+  background-color: transparent;
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.auth-refresh:hover {
+  background-color: var(--hover-color);
+}
+
+.auth-loading {
+  padding: 1rem;
+  color: var(--text-secondary-color);
+  text-align: center;
+}
+
+.auth-error {
+  padding: 1rem;
+  color: var(--error-color);
+  text-align: center;
+} 

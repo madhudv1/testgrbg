@@ -17,6 +17,11 @@ class ChatService:
             "categorize": self._handle_categorize
         }
 
+    async def process_command(self, command: str) -> Dict:
+        """Process a command from the API endpoint."""
+        logger.info(f"Processing command: {command}")
+        return await self.process_message(command)
+
     async def process_message(self, message: str) -> Dict:
         """Process a user message and return a response."""
         original_message = message.strip()

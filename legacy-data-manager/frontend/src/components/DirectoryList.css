@@ -1,0 +1,85 @@
+.directory-list {
+  padding: 1rem;
+  background-color: var(--background-color);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.directory-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.directory-header h3 {
+  margin: 0;
+  color: var(--text-color);
+  font-size: 1.25rem;
+}
+
+.refresh-button {
+  padding: 0.5rem 1rem;
+  background-color: transparent;
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.refresh-button:hover {
+  background-color: var(--hover-color);
+}
+
+.directory-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.directory-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.directory-item:hover {
+  background-color: var(--hover-color);
+}
+
+.directory-icon {
+  width: 2rem;
+  height: 2rem;
+  color: var(--primary-color);
+}
+
+.directory-info {
+  flex: 1;
+}
+
+.directory-name {
+  color: var(--text-color);
+  font-weight: 500;
+}
+
+.directory-path {
+  color: var(--text-secondary-color);
+  font-size: 0.875rem;
+}
+
+.directory-loading {
+  padding: 1rem;
+  color: var(--text-secondary-color);
+  text-align: center;
+}
+
+.directory-error {
+  padding: 1rem;
+  color: var(--error-color);
+  text-align: center;
+} 

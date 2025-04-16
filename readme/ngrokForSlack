@@ -1,0 +1,44 @@
+ngrok http 8000
+    You will see 
+    Forwarding https://3a4d-71-198-50-205.ngrok-free.app -> http://localhost
+
+go to https://api.slack.com/apps/A08MEPY5ZCP/event-subscriptions? and change the url
+    <https://3a4d-71-198-50-205.ngrok-free.app>/api/v1/slack/events
+
+https://api.slack.com/apps/A08MEPY5ZCP/slash-commands? and change the Url
+
+Authenticate slack
+1. First, we need to get your Slack user ID. You can find this by:
+    Right-clicking your name in Slack
+    Selecting "Copy member ID"
+2. Then, you need to call the auth URL endpoint with your Slack user ID and email:
+    Apply to ngrokForSlac...
+    YOUR_EMAIL
+3. This will return a Google Drive authentication URL that you need to visit in your browser
+4. After authenticating with Google Drive, you'll be redirected back to Slack
+
+Let me help you set this up. First, can you:
+Get your Slack user ID (right-click your name in Slack and copy member ID) 
+    Madhu member ID: U08NHBLHNQG
+Share your email address (or you can use a placeholder email)
+Once you provide these, I'll help you construct the authentication URL and guide you through the process.
+
+Slack info in .env
+For SLACK_BOT_TOKEN:
+    Go to api.slack.com/apps
+    Select your app
+    Go to "OAuth & Permissions" in the left sidebar
+    Under "OAuth Tokens for Your Workspace", you'll find:
+    "Bot User OAuth Token" (starts with xoxb-)
+    Copy this token and use it as your SLACK_BOT_TOKEN
+For SLACK_APP_TOKEN:
+    Go to api.slack.com/apps
+    Select your app
+    Go to "Basic Information" in the left sidebar
+    Scroll down to "App-Level Tokens"
+    Click "Generate Token and Scopes"
+    Give it a name (e.g., "socket-token")
+    Add the connections:write scope
+    Click "Generate"
+    Copy the generated token (starts with xapp-)
+    Use this as your SLACK_APP_TOKEN

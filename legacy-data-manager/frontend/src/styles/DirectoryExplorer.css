@@ -1,0 +1,114 @@
+.directory-explorer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--background-color);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.explorer-header {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.explorer-header h2 {
+  margin: 0;
+  color: var(--text-color);
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.explorer-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.explorer-actions button {
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-color);
+  background-color: var(--background-color);
+  color: var(--text-color);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.explorer-actions button:hover {
+  background-color: var(--hover-color);
+}
+
+.explorer-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+}
+
+.directory-tree {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.directory-item {
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.directory-item:hover {
+  background-color: var(--hover-color);
+}
+
+.directory-item.selected {
+  background-color: var(--selected-color);
+}
+
+.directory-item-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.directory-item-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  color: var(--icon-color);
+}
+
+.directory-item-name {
+  color: var(--text-color);
+  font-size: 0.875rem;
+}
+
+.directory-item-size {
+  margin-left: auto;
+  color: var(--text-secondary-color);
+  font-size: 0.75rem;
+}
+
+.directory-item-children {
+  margin-left: 1.5rem;
+  border-left: 1px solid var(--border-color);
+  padding-left: 0.5rem;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  color: var(--text-secondary-color);
+}
+
+.error {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  color: var(--error-color);
+} 

@@ -1,0 +1,271 @@
+.klio-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--primary-color);
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+.klio-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  color: white;
+}
+
+.klio-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.klio-avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background-color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.klio-name {
+  font-size: 1rem;
+  font-weight: 500;
+  color: white;
+}
+
+.klio-more {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 1.25rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.klio-content {
+  flex: 1;
+  padding: 1.5rem;
+  background-color: var(--card-background);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.chat-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.message {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  max-width: 85%;
+}
+
+.message.assistant {
+  align-self: flex-start;
+}
+
+.message.user {
+  flex-direction: row-reverse;
+  align-self: flex-end;
+}
+
+.message-avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background-color: var(--primary-color);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.message-content {
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.message.assistant .message-content {
+  background-color: var(--background-color);
+  color: var(--text-color);
+}
+
+.message.user .message-content {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.klio-input {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.klio-input input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  outline: none;
+  background: white;
+}
+
+.klio-input input:focus {
+  border-color: var(--primary-color);
+}
+
+.connection-prompt {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: center;
+}
+
+.connect-button {
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.connect-button:hover {
+  background-color: var(--primary-light);
+}
+
+.command-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-top: 0.15rem;
+}
+
+.command-button {
+  padding: 0.35rem 1rem;
+  background-color: var(--button-background);
+  color: var(--text-color);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  text-align: left;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.command-button:hover {
+  background-color: var(--button-hover);
+}
+
+.command-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.klio-response {
+  margin-top: 16px;
+  padding: 16px;
+  background-color: var(--card-background);
+  border-radius: 8px;
+  color: var(--text-color);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.analysis-options {
+  margin-top: 0.35rem;
+  padding: 0.35rem;
+  background-color: var(--card-background);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.analysis-options h3 {
+  margin-bottom: 0.35rem;
+  color: var(--text-color);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.analysis-option {
+  width: 100%;
+  padding: 0.35rem 1rem;
+  margin-bottom: 0.15rem;
+  background-color: var(--button-background);
+  color: var(--text-color);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  text-align: left;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.analysis-option:hover {
+  background-color: var(--button-hover);
+}
+
+.analysis-option.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: var(--disabled-background);
+}
+
+.analysis-option:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.directory-selection {
+  margin-top: 0.35rem;
+  padding: 0.35rem;
+  background-color: var(--card-background);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.directory-selection h3 {
+  margin-bottom: 0.35rem;
+  color: var(--text-color);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.directory-option {
+  width: 100%;
+  padding: 0.35rem 1rem;
+  margin-bottom: 0.15rem;
+  background-color: var(--button-background);
+  color: var(--text-color);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  text-align: left;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.directory-option:hover {
+  background-color: var(--button-hover);
+} 
