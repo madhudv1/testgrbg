@@ -29,39 +29,74 @@ class GoogleDriveService:
         logger.info(f"Token file path: {self.TOKEN_FILE}")
 
     def load_credentials(self):
-        """Load credentials from token file if it exists."""
-        if os.path.exists(self.TOKEN_FILE):
-            try:
-                with open(self.TOKEN_FILE, 'rb') as token:
-                    self.credentials = pickle.load(token)
-                logger.info("Loaded credentials from token file")
-            except Exception as e:
-                logger.error(f"Error loading credentials: {e}")
-                self.credentials = None
-        else:
-            logger.info("No token file found")
+        """Load credentials from token file."""
+        if not os.path.exists('token.pickle'):
+            return None
+        
+        try:
+            with open('token.pickle', 'rb') as token:
+                credentials = pickle.load(token)
+                
+                # Validate credentials have refresh token
+                if not credentials.refresh_token:
+                    logger.error("Loaded credentials missing refresh token")
+                    return None
+                    
+                # Check if credentials are expired and can be refreshed
+                if credentials.expired and credentials.refresh_token:
+                    try:
+                        credentials.refresh(Request())
+                        # Save refreshed credentials
+                        self.save_credentials(credentials)
+                    except Exception as e:
+                        logger.error(f"Failed to refresh credentials: {e}")
+                        return None
+                        
+                return credentials
+        except Exception as e:
+            logger.error(f"Error loading credentials: {e}")
+            return None
 
-    def save_credentials(self):
+    def save_credentials(self, credentials):
         """Save credentials to token file."""
-        if self.credentials:
-            try:
-                with open(self.TOKEN_FILE, 'wb') as token:
-                    pickle.dump(self.credentials, token)
-                logger.info("Saved credentials to token file")
-            except Exception as e:
-                logger.error(f"Error saving credentials: {e}")
-
-    def is_authenticated(self) -> bool:
-        """Check if the service is authenticated."""
-        if self.credentials and self.credentials.expired:
-            try:
-                self.credentials.refresh(Request())
-                self.save_credentials()
-                return True
-            except Exception as e:
-                logger.error(f"Error refreshing credentials: {e}")
+        try:
+            # Validate credentials have refresh token before saving
+            if not credentials.refresh_token:
+                logger.error("Cannot save credentials - missing refresh token")
                 return False
-        return self.credentials is not None and not self.credentials.expired
+                
+            with open('token.pickle', 'wb') as token:
+                pickle.dump(credentials, token)
+            return True
+        except Exception as e:
+            logger.error(f"Error saving credentials: {e}")
+            return False
+
+    def is_authenticated(self):
+        """Check if we have valid credentials."""
+        try:
+            credentials = self.load_credentials()
+            if not credentials:
+                return False
+                
+            # Validate refresh token exists
+            if not credentials.refresh_token:
+                logger.error("Credentials missing refresh token")
+                return False
+                
+            # Check if expired and try to refresh
+            if credentials.expired:
+                try:
+                    credentials.refresh(Request())
+                    self.save_credentials(credentials)
+                except Exception as e:
+                    logger.error(f"Failed to refresh expired credentials: {e}")
+                    return False
+                    
+            return True
+        except Exception as e:
+            logger.error(f"Error checking authentication: {e}")
+            return False
 
     def get_auth_url(self) -> str:
         """Generate the authorization URL for Google OAuth2."""
@@ -80,8 +115,11 @@ class GoogleDriveService:
             scopes=self.SCOPES
         )
         flow.redirect_uri = settings.GOOGLE_REDIRECT_URI
+        
+        # Ensure we request offline access and refresh token
         auth_url, _ = flow.authorization_url(
             access_type='offline',
+            prompt='consent',
             include_granted_scopes='true'
         )
         return auth_url
@@ -103,26 +141,51 @@ class GoogleDriveService:
             scopes=self.SCOPES
         )
         flow.redirect_uri = settings.GOOGLE_REDIRECT_URI
-        flow.fetch_token(code=code)
         
-        # Create a proper Credentials object with all necessary fields
-        self.credentials = Credentials(
-            token=flow.credentials.token,
-            refresh_token=flow.credentials.refresh_token,
-            token_uri=flow.credentials.token_uri,
-            client_id=settings.GOOGLE_CLIENT_ID,
-            client_secret=settings.GOOGLE_CLIENT_SECRET,
-            scopes=flow.credentials.scopes
-        )
-        
-        self.save_credentials()  # Save credentials after getting them
-        return self.credentials
+        try:
+            flow.fetch_token(code=code)
+            credentials = flow.credentials
+            
+            # Validate we have a refresh token
+            if not credentials.refresh_token:
+                logger.error("No refresh token received from Google OAuth flow")
+                raise ValueError("No refresh token received. Please try again.")
+                
+            # Save the credentials
+            if not self.save_credentials(credentials):
+                raise ValueError("Failed to save credentials")
+                
+            return credentials
+        except Exception as e:
+            logger.error(f"Error getting credentials from code: {e}")
+            raise
 
     def build_service(self):
         """Build the Google Drive service."""
-        if not self.is_authenticated():
-            raise ValueError("Not authenticated. Please authenticate first.")
-        self.service = build('drive', 'v3', credentials=self.credentials)
+        try:
+            credentials = self.load_credentials()
+            if not credentials:
+                raise ValueError("Not authenticated. Please authenticate first.")
+            
+            # Validate refresh token exists
+            if not credentials.refresh_token:
+                logger.error("Credentials missing refresh token")
+                raise ValueError("Invalid credentials: missing refresh token")
+            
+            # Check if expired and try to refresh
+            if credentials.expired:
+                try:
+                    credentials.refresh(Request())
+                    self.save_credentials(credentials)
+                except Exception as e:
+                    logger.error(f"Failed to refresh expired credentials: {e}")
+                    raise ValueError("Failed to refresh credentials")
+                
+            self.service = build('drive', 'v3', credentials=credentials)
+            return self.service
+        except Exception as e:
+            logger.error(f"Error building service: {e}")
+            raise
 
     def list_files(self, page_size: int = 100) -> List[Dict]:
         """List files from Google Drive."""
@@ -174,17 +237,21 @@ class GoogleDriveService:
 
     def list_directories(self, page_size: int = 100) -> List[Dict]:
         """List top-level directories (folders) owned by the authenticated user from Google Drive."""
-        if not self.service:
-            self.build_service()
-        
-        query = "mimeType='application/vnd.google-apps.folder' and 'me' in owners and 'root' in parents and trashed = false"
-        results = self.service.files().list(
-            q=query,
-            pageSize=page_size,
-            fields="files(id, name, mimeType, modifiedTime, owners, lastModifyingUser, createdTime)"
-        ).execute()
-        
-        return results.get('files', [])
+        try:
+            if not self.service:
+                self.build_service()
+            
+            query = "mimeType='application/vnd.google-apps.folder' and 'me' in owners and 'root' in parents and trashed = false"
+            results = self.service.files().list(
+                q=query,
+                pageSize=page_size,
+                fields="files(id, name, mimeType, modifiedTime, owners, lastModifyingUser, createdTime)"
+            ).execute()
+            
+            return results.get('files', [])
+        except Exception as e:
+            logger.error(f"Error listing directories: {e}")
+            raise
 
     def list_directory(self, folder_id: str, page_size: int = 100) -> List[Dict]:
         """List files in a specific directory."""

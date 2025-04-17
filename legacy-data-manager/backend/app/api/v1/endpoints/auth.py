@@ -104,6 +104,14 @@ async def google_callback(
         flow.fetch_token(code=code)
         credentials = flow.credentials
         
+        # Validate that we have a refresh token
+        if not credentials.refresh_token:
+            logger.error("No refresh token received from Google OAuth flow")
+            if origin == "klio":
+                return RedirectResponse(url=f"{settings.FRONTEND_URL}/?auth=error&message=No refresh token received. Please revoke access and try again.")
+            else:
+                raise HTTPException(status_code=400, detail="No refresh token received")
+        
         if origin == "slack":
             slack_user_id = state_data.get("slack_user_id")
             if not slack_user_id:

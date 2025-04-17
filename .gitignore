@@ -53,3 +53,4 @@ legacy-data-manager/backend/secrets/
 *.json
 !legacy-data-manager/frontend/package.json
 !legacy-data-manager/frontend/package-lock.json 
+legacy-data-manager/backend/token.pickle

@@ -14,7 +14,7 @@ const analysisOptions = [
   { id: 'ownership', name: 'Ownership Based', enabled: false },
   { id: 'sensitive', name: 'Sensitive Info', enabled: false },
   { id: 'usage', name: 'Usage Pattern', enabled: false },
-  { id: 'filetype', name: 'File Type', enabled: false }
+  { id: 'filetype', name: 'File Type', enabled: true }
 ];
 
 const Klio = ({ onCommand, onStatsUpdate }) => {
@@ -31,21 +31,98 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [showDirectorySelection, setShowDirectorySelection] = useState(false);
   const [showAnalysisOptions, setShowAnalysisOptions] = useState(false);
+  const [error, setError] = useState(null);
   
   const location = useLocation();
 
-  const checkConnectionStatus = async () => {
+  useEffect(() => {
+    // Check for auth error in URL params
+    const urlParams = new URLSearchParams(window.location.search);
+    const authError = urlParams.get('auth');
+    const errorMessage = urlParams.get('message');
+    
+    if (authError === 'error') {
+      setError(errorMessage || 'Failed to authenticate with Google Drive');
+      setMessages(prev => [...prev, {
+        type: 'assistant',
+        content: `Authentication failed: ${errorMessage || 'Please try connecting again.'}`
+      }]);
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (authError === 'success') {
+      setMessages(prev => [...prev, {
+        type: 'assistant',
+        content: 'Successfully connected to Google Drive! I can help you analyze your documents. Try these commands:\n\n• "list directories" - Show available directories\n• "scan directory" - Analyze files in a directory\n• "help" - Show all available commands'
+      }]);
+      setIsConnected(true);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      fetchDirectories();
+    }
+    
+    // Check connection status
+    handleCheckConnection();
+  }, [location]);
+
+  const handleCheckConnection = async () => {
     try {
-      console.log('Checking connection status...');
       const response = await fetch(`${config.apiBaseUrl}/api/v1/drive/auth/status`);
       const data = await response.json();
-      console.log('Auth status response:', data);
       
-      // If we get a 500 error when fetching directories, we're not really authenticated
-      try {
-        const dirResponse = await fetch(`${config.apiBaseUrl}/api/v1/drive/directories`);
-        if (!dirResponse.ok) {
-          console.log('Directory fetch failed, considering not authenticated');
+      if (!response.ok) {
+        setIsConnected(false);
+        if (response.status === 401) {
+          setError("Google Drive session expired. Please reconnect.");
+          setMessages(prev => [...prev, {
+            type: 'assistant',
+            content: 'Your Google Drive session has expired. Please connect again.'
+          }]);
+        } else {
+          setError(`Connection error: ${data.detail || 'Unknown error'}`);
+        }
+        return false;
+      }
+      
+      setIsConnected(data.authenticated);
+      setError(null);
+      return data.authenticated;
+    } catch (error) {
+      console.error('Error checking connection:', error);
+      setIsConnected(false);
+      setError("Failed to check Google Drive connection status");
+      return false;
+    }
+  };
+
+  const handleConnect = async () => {
+    try {
+      setError(null);
+      const response = await fetch(`${config.apiBaseUrl}/api/v1/drive/auth/url`);
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.detail || 'Failed to get authentication URL');
+      }
+      
+      // Store current URL to handle redirect back after auth
+      localStorage.setItem('klio_redirect', window.location.href);
+      window.location.href = data.auth_url;
+    } catch (error) {
+      console.error('Failed to get auth URL:', error);
+      setError(error.message);
+      setMessages(prev => [...prev, {
+        type: 'assistant',
+        content: `Sorry, I encountered an error while trying to connect to Google Drive: ${error.message}`
+      }]);
+    }
+  };
+
+  const fetchDirectories = async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch(`${config.apiBaseUrl}/api/v1/drive/directories`);
+      
+      if (!response.ok) {
+        if (response.status === 401) {
           setIsConnected(false);
           setMessages(prev => [...prev, {
             type: 'assistant',
@@ -53,60 +130,9 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
           }]);
           return;
         }
-      } catch (error) {
-        console.log('Directory fetch error, considering not authenticated');
-        setIsConnected(false);
-        setMessages(prev => [...prev, {
-          type: 'assistant',
-          content: 'Your Google Drive session has expired. Please connect again.'
-        }]);
-        return;
+        throw new Error('Failed to fetch directories');
       }
       
-      setIsConnected(true);
-      console.log('Successfully authenticated and can access directories');
-    } catch (error) {
-      console.error('Failed to check connection status:', error);
-      setIsConnected(false);
-      setMessages(prev => [...prev, {
-        type: 'assistant',
-        content: 'I need access to your Google Drive. Would you like to connect now?'
-      }]);
-    }
-  };
-
-  useEffect(() => {
-    console.log('Component mounted, checking auth status');
-    checkConnectionStatus();
-    
-    const params = new URLSearchParams(location.search);
-    const authStatus = params.get('auth');
-    console.log('URL auth status:', authStatus);
-    
-    if (authStatus === 'success') {
-      console.log('Auth success detected in URL');
-      setMessages(prev => [...prev, {
-        type: 'assistant',
-        content: 'Successfully connected to Google Drive! I can help you analyze your documents. Try these commands:\n\n• "list directories" - Show available directories\n• "scan directory" - Analyze files in a directory\n• "help" - Show all available commands'
-      }]);
-      setIsConnected(true);
-      window.history.replaceState({}, '', '/');
-      fetchDirectories();
-    } else if (authStatus === 'error') {
-      console.log('Auth error detected in URL');
-      const errorMsg = params.get('message') || 'Failed to connect to Google Drive';
-      setMessages(prev => [...prev, {
-        type: 'assistant',
-        content: `Error: ${errorMsg}. Please try connecting again.`
-      }]);
-      window.history.replaceState({}, '', '/');
-    }
-  }, [location]);
-
-  const fetchDirectories = async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch(`${config.apiBaseUrl}/api/v1/drive/directories`);
       const data = await response.json();
       setDirectories(data.directories || []);
       
@@ -133,23 +159,9 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
     }
   };
 
-  const handleConnect = async () => {
-    try {
-      const response = await fetch(`${config.apiBaseUrl}/api/v1/drive/auth/url`);
-      const data = await response.json();
-      if (data.auth_url) {
-        window.location.href = data.auth_url;
-      }
-    } catch (error) {
-      console.error('Failed to get auth URL:', error);
-      setMessages(prev => [...prev, {
-        type: 'assistant',
-        content: 'Sorry, I encountered an error while trying to connect to Google Drive. Please try again.'
-      }]);
-    }
-  };
-
   const handleAnalyze = async (directory) => {
+    if (!directory) return;
+    
     try {
       setIsLoading(true);
       const response = await fetch(`${config.apiBaseUrl}/api/v1/drive/directories/${directory.id}/analyze`, {
@@ -244,7 +256,14 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
         setSelectedDirectory(null);
         break;
       case 'clean':
-        handleClean();
+        if (selectedDirectory) {
+          handleClean();
+        } else {
+          setMessages(prev => [...prev, {
+            type: 'assistant',
+            content: 'Please select a directory first.'
+          }]);
+        }
         break;
       default:
         console.warn('Unknown command:', cmd.name);
@@ -284,7 +303,15 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
         fetchDirectories();
       } else if (lowerMessage.startsWith('scan ')) {
         const directoryName = message.substring(5).trim();
-        // Implement scan directory logic here
+        const directory = directories.find(dir => dir.name.toLowerCase() === directoryName.toLowerCase());
+        if (directory) {
+          handleAnalyze(directory);
+        } else {
+          setMessages(prev => [...prev, {
+            type: 'assistant',
+            content: `I couldn't find a directory named "${directoryName}". Please try "list directories" to see available directories.`
+          }]);
+        }
       } else if (lowerMessage === 'help') {
         setMessages(prev => [...prev, {
           type: 'assistant',

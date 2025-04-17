@@ -14,18 +14,54 @@ function App() {
     staleDocuments: 0,
     duplicateDocuments: 0,
     sensitiveDocuments: 0,
-    ageDistribution: {
-      lessThanOneYear: 0,
-      oneToThreeYears: 0,
-      moreThanThreeYears: 0
+    // Dummy data for development
+    moreThanThreeYears: {
+      types: {
+        documents: { count: 45, size: 15000000, percentage: 30 },
+        spreadsheets: { count: 30, size: 8000000, percentage: 20 },
+        presentations: { count: 15, size: 20000000, percentage: 10 },
+        pdfs: { count: 30, size: 25000000, percentage: 20 },
+        images: { count: 15, size: 12000000, percentage: 10 },
+        others: { count: 15, size: 5000000, percentage: 10 }
+      },
+      risks: {
+        pii: { count: 20, size: 5000000, percentage: 40 },
+        financial: { count: 15, size: 4000000, percentage: 30 },
+        legal: { count: 10, size: 3000000, percentage: 20 },
+        confidential: { count: 5, size: 1000000, percentage: 10 }
+      }
     },
-    fileTypes: {
-      documents: { count: 0, size: 0 },
-      spreadsheets: { count: 0, size: 0 },
-      images: { count: 0, size: 0 },
-      presentations: { count: 0, size: 0 },
-      pdfs: { count: 0, size: 0 },
-      others: { count: 0, size: 0 }
+    oneToThreeYears: {
+      types: {
+        documents: { count: 30, size: 10000000, percentage: 25 },
+        spreadsheets: { count: 25, size: 6000000, percentage: 20 },
+        presentations: { count: 20, size: 15000000, percentage: 15 },
+        pdfs: { count: 25, size: 20000000, percentage: 20 },
+        images: { count: 15, size: 10000000, percentage: 12 },
+        others: { count: 10, size: 4000000, percentage: 8 }
+      },
+      risks: {
+        pii: { count: 15, size: 4000000, percentage: 35 },
+        financial: { count: 12, size: 3000000, percentage: 28 },
+        legal: { count: 10, size: 2500000, percentage: 23 },
+        confidential: { count: 6, size: 1500000, percentage: 14 }
+      }
+    },
+    lessThanOneYear: {
+      types: {
+        documents: { count: 20, size: 8000000, percentage: 22 },
+        spreadsheets: { count: 18, size: 5000000, percentage: 20 },
+        presentations: { count: 15, size: 12000000, percentage: 16 },
+        pdfs: { count: 20, size: 18000000, percentage: 22 },
+        images: { count: 12, size: 9000000, percentage: 13 },
+        others: { count: 7, size: 3000000, percentage: 7 }
+      },
+      risks: {
+        pii: { count: 10, size: 3000000, percentage: 30 },
+        financial: { count: 8, size: 2500000, percentage: 25 },
+        legal: { count: 8, size: 2000000, percentage: 25 },
+        confidential: { count: 6, size: 1500000, percentage: 20 }
+      }
     }
   });
 
@@ -46,22 +82,61 @@ function App() {
   };
 
   const handleStatsUpdate = (newStats) => {
-    console.log('handleStatsUpdate called with full details:', JSON.stringify(newStats, null, 2));
-    console.log('Current stats before update full details:', JSON.stringify(stats, null, 2));
+    console.log('Received new stats:', newStats);
+    
     setStats(prevStats => {
+      // Calculate total files and size from file types
+      const totalFiles = newStats.totalFiles || Object.values(newStats.fileTypes || {}).reduce((sum, type) => sum + type.count, 0);
+      const totalSize = Object.values(newStats.fileTypes || {}).reduce((sum, type) => sum + type.size, 0);
+      
+      // Calculate counts from percentages and total files
+      const lessThanOneYearCount = Math.round((newStats.ageDistribution?.lessThanOneYear || 0) * totalFiles / 100);
+      const oneToThreeYearsCount = Math.round((newStats.ageDistribution?.oneToThreeYears || 0) * totalFiles / 100);
+      const moreThanThreeYearsCount = Math.round((newStats.ageDistribution?.moreThanThreeYears || 0) * totalFiles / 100);
+      
+      // Calculate sizes based on the same age distribution percentages
+      const lessThanOneYearSize = Math.round((newStats.ageDistribution?.lessThanOneYear || 0) * totalSize / 100);
+      const oneToThreeYearsSize = Math.round((newStats.ageDistribution?.oneToThreeYears || 0) * totalSize / 100);
+      const moreThanThreeYearsSize = Math.round((newStats.ageDistribution?.moreThanThreeYears || 0) * totalSize / 100);
+      
+      // Create updated stats object
       const updatedStats = {
         ...prevStats,
-        ...newStats,
         ageDistribution: {
-          ...prevStats.ageDistribution,
-          ...newStats.ageDistribution
+          lessThanOneYear: newStats.ageDistribution?.lessThanOneYear ?? prevStats.ageDistribution.lessThanOneYear,
+          oneToThreeYears: newStats.ageDistribution?.oneToThreeYears ?? prevStats.ageDistribution.oneToThreeYears,
+          moreThanThreeYears: newStats.ageDistribution?.moreThanThreeYears ?? prevStats.ageDistribution.moreThanThreeYears
         },
+        // Use calculated counts and sizes
+        lessThanOneYearCount,
+        oneToThreeYearsCount,
+        moreThanThreeYearsCount,
+        lessThanOneYearSize,
+        oneToThreeYearsSize,
+        moreThanThreeYearsSize,
         fileTypes: {
-          ...prevStats.fileTypes,
-          ...newStats.fileTypes
-        }
+          ...(prevStats.fileTypes || {}),
+          ...Object.keys(newStats.fileTypes || {}).reduce((acc, key) => {
+            acc[key] = { ...(prevStats.fileTypes?.[key] || {}), ...(newStats.fileTypes[key] || {}) };
+            return acc;
+          }, {})
+        },
+        totalFiles,
+        totalSize
       };
-      console.log('Updated stats full details:', JSON.stringify(updatedStats, null, 2));
+      
+      console.log('Updated stats:', {
+        totalFiles,
+        totalSize,
+        lessThanOneYearCount,
+        oneToThreeYearsCount,
+        moreThanThreeYearsCount,
+        lessThanOneYearSize,
+        oneToThreeYearsSize,
+        moreThanThreeYearsSize,
+        ageDistribution: updatedStats.ageDistribution
+      });
+      
       return updatedStats;
     });
   };
@@ -74,20 +149,29 @@ function App() {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
   };
 
-  const renderFileTypeContent = () => {
-    const totalCount = Object.values(stats.fileTypes).reduce((sum, type) => sum + type.count, 0);
-    const totalSize = Object.values(stats.fileTypes).reduce((sum, type) => sum + type.size, 0);
-    
-    // Convert to array for sorting
-    const typeArray = Object.entries(stats.fileTypes).map(([type, data]) => ({
-      type,
-      ...data,
-      percentage: totalCount > 0 ? (data.count / totalCount * 100) : 0,
-      sizePercentage: totalSize > 0 ? (data.size / totalSize * 100) : 0
-    }));
+  const fileTypeColors = {
+    documents: '#4285F4',    // Google Blue
+    spreadsheets: '#0F9D58', // Google Green
+    presentations: '#F4B400', // Google Yellow
+    pdfs: '#DB4437',        // Google Red
+    images: '#9C27B0',      // Purple
+    others: '#757575'       // Gray
+  };
 
-    // Sort based on user preference
-    typeArray.sort((a, b) => {
+  const renderFileTypeContent = () => {
+    const { fileTypes } = stats;
+    
+    // Filter out types with both count and size as 0
+    const nonEmptyTypes = Object.entries(fileTypes).filter(([_, type]) => 
+      type.count > 0 || type.size > 0
+    );
+    
+    // Calculate totals for percentage
+    const totalCount = nonEmptyTypes.reduce((sum, [_, type]) => sum + type.count, 0);
+    const totalSize = nonEmptyTypes.reduce((sum, [_, type]) => sum + type.size, 0);
+    
+    // Sort file types
+    const sortedTypes = nonEmptyTypes.sort(([keyA, a], [keyB, b]) => {
       if (typeSort === 'count') {
         return b.count - a.count;
       }
@@ -96,7 +180,7 @@ function App() {
 
     return (
       <div className="type-content">
-        <div className="type-header">
+        <div className="sort-toggle">
           <button 
             className={`sort-button ${typeSort === 'count' ? 'active' : ''}`}
             onClick={() => setTypeSort('count')}
@@ -111,21 +195,148 @@ function App() {
           </button>
         </div>
         <div className="type-bars">
-          {typeArray.map(({ type, count, size, percentage, sizePercentage }) => (
-            <div key={type} className="type-bar">
-              <span className="type-label">{type.charAt(0).toUpperCase() + type.slice(1)}</span>
-              <div className="bar-container">
-                <div 
-                  className="bar" 
-                  style={{ width: `${typeSort === 'count' ? percentage : sizePercentage}%` }}
-                ></div>
+          {sortedTypes.map(([type, data]) => {
+            const percentage = typeSort === 'count' 
+              ? (data.count / totalCount * 100)
+              : (data.size / totalSize * 100);
+            
+            return (
+              <div key={type} className="type-bar">
+                <span className="type-label">{type.charAt(0).toUpperCase() + type.slice(1)}</span>
+                <div className="bar-container">
+                  <div 
+                    className="bar" 
+                    style={{ 
+                      width: `${percentage}%`,
+                      backgroundColor: fileTypeColors[type],
+                      opacity: 0.85
+                    }}
+                  ></div>
+                </div>
+                <div className="type-stats">
+                  <span className="type-count">{data.count} files</span>
+                  <span className="type-size">{formatBytes(data.size)}</span>
+                  <span className="type-percentage">{percentage.toFixed(1)}%</span>
+                </div>
               </div>
-              <div className="type-stats">
-                <span className="type-count">{count}</span>
-                <span className="type-size">{formatBytes(size)}</span>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderRiskContent = () => {
+    const total = stats.totalFiles || 0; // Use totalFiles from stats
+    const sensitiveCount = stats.sensitiveDocuments || 0;
+    
+    // Ensure cleanCount is not negative if data is inconsistent
+    const cleanCount = Math.max(0, total - sensitiveCount); 
+
+    const sensitivePercentage = total > 0 ? (sensitiveCount / total * 100) : 0;
+    const cleanPercentage = total > 0 ? (cleanCount / total * 100) : 0;
+
+    // Define colors directly for clarity
+    const sensitiveColor = '#DB4437'; // Red
+    const cleanColor = '#0F9D58'; // Green
+
+    return (
+      <div className="risk-bars"> {/* Use a specific class */} 
+        <div className="risk-bar"> {/* Class for individual bar row */} 
+          <span className="risk-label">Sensitive</span>
+          <div className="bar-container">
+            <div 
+              className="bar sensitive-bar" 
+              style={{ 
+                width: `${sensitivePercentage}%`,
+                backgroundColor: sensitiveColor,
+                opacity: 0.85
+              }}
+            ></div>
+          </div>
+          <div className="risk-stats"> {/* Specific class for stats */} 
+            <span className="count">{sensitiveCount} files</span>
+            <span className="percentage">{sensitivePercentage.toFixed(1)}%</span>
+          </div>
+        </div>
+        <div className="risk-bar">
+          <span className="risk-label">Clean</span>
+          <div className="bar-container">
+            <div 
+              className="bar clean-bar" 
+              style={{ 
+                width: `${cleanPercentage}%`,
+                backgroundColor: cleanColor,
+                opacity: 0.85
+              }}
+            ></div>
+          </div>
+          <div className="risk-stats">
+            <span className="count">{cleanCount} files</span>
+            <span className="percentage">{cleanPercentage.toFixed(1)}%</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderAgeSection = (data, title) => {
+    if (!data) return null;
+
+    return (
+      <div className="age-section">
+        <h3>{title}</h3>
+        
+        {/* Types Section */}
+        <div className="section-content">
+          <h4>File Types</h4>
+          <div className="type-bars">
+            {Object.entries(data.types).map(([type, stats]) => (
+              <div key={type} className="type-bar">
+                <span className="type-label">{type.charAt(0).toUpperCase() + type.slice(1)}</span>
+                <div className="bar-container">
+                  <div 
+                    className="bar" 
+                    style={{ 
+                      width: `${stats.percentage}%`,
+                      backgroundColor: 'var(--purple-progress)'
+                    }}
+                  ></div>
+                </div>
+                <div className="type-stats">
+                  <span className="type-count">{stats.count} files</span>
+                  <span className="type-size">{formatBytes(stats.size)}</span>
+                  <span className="type-percentage">{stats.percentage}%</span>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+        </div>
+
+        {/* Risks Section */}
+        <div className="section-content">
+          <h4>Risks</h4>
+          <div className="risk-bars">
+            {Object.entries(data.risks).map(([risk, stats]) => (
+              <div key={risk} className="risk-bar">
+                <span className="risk-label">{risk.charAt(0).toUpperCase() + risk.slice(1)}</span>
+                <div className="bar-container">
+                  <div 
+                    className="bar" 
+                    style={{ 
+                      width: `${stats.percentage}%`,
+                      backgroundColor: 'var(--purple-progress)'
+                    }}
+                  ></div>
+                </div>
+                <div className="risk-stats">
+                  <span className="risk-count">{stats.count} files</span>
+                  <span className="risk-size">{formatBytes(stats.size)}</span>
+                  <span className="risk-percentage">{stats.percentage}%</span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -133,38 +344,12 @@ function App() {
 
   const renderTabContent = () => {
     switch (activeTab) {
-      case 'age':
-        return (
-          <div className="age-bars">
-            <div className="age-bar">
-              <span className="age-label">&lt; 1 year</span>
-              <div className="bar-container">
-                <div className="bar" style={{ width: `${stats.ageDistribution.lessThanOneYear}%` }}></div>
-              </div>
-              <div className="percentage">
-                {stats.ageDistribution.lessThanOneYear}%
-              </div>
-            </div>
-            <div className="age-bar">
-              <span className="age-label">1-3 years</span>
-              <div className="bar-container">
-                <div className="bar" style={{ width: `${stats.ageDistribution.oneToThreeYears}%` }}></div>
-              </div>
-              <div className="percentage">
-                {stats.ageDistribution.oneToThreeYears}%
-              </div>
-            </div>
-            <div className="age-bar">
-              <span className="age-label">&gt; 3 years</span>
-              <div className="bar-container">
-                <div className="bar" style={{ width: `${stats.ageDistribution.moreThanThreeYears}%` }}></div>
-              </div>
-              <div className="percentage">
-                {stats.ageDistribution.moreThanThreeYears}%
-              </div>
-            </div>
-          </div>
-        );
+      case 'moreThanThreeYears':
+        return renderAgeSection(stats.moreThanThreeYears, 'Files > 3 years old');
+      case 'oneToThreeYears':
+        return renderAgeSection(stats.oneToThreeYears, 'Files 1-3 years old');
+      case 'lessThanOneYear':
+        return renderAgeSection(stats.lessThanOneYear, 'Files < 1 year old');
       case 'type':
         return renderFileTypeContent();
       case 'owner':
@@ -172,7 +357,7 @@ function App() {
       case 'usage':
         return <div className="tab-content">Usage analysis coming soon</div>;
       case 'risk':
-        return <div className="tab-content">Risk analysis coming soon</div>;
+        return renderRiskContent();
       default:
         return null;
     }
@@ -220,39 +405,25 @@ function App() {
                     <div className="age-distribution">
                       <div className="analysis-tabs">
                         <button 
-                          className={`tab-button ${activeTab === 'age' ? 'active' : ''}`}
-                          onClick={() => setActiveTab('age')}
+                          className={`tab-button ${activeTab === 'moreThanThreeYears' ? 'active' : ''}`}
+                          onClick={() => setActiveTab('moreThanThreeYears')}
                         >
-                          Age
+                          &gt; 3 years
                         </button>
                         <button 
-                          className={`tab-button ${activeTab === 'type' ? 'active' : ''}`}
-                          onClick={() => setActiveTab('type')}
+                          className={`tab-button ${activeTab === 'oneToThreeYears' ? 'active' : ''}`}
+                          onClick={() => setActiveTab('oneToThreeYears')}
                         >
-                          Type
+                          1-3 years
                         </button>
                         <button 
-                          className={`tab-button ${activeTab === 'owner' ? 'active' : ''}`}
-                          onClick={() => setActiveTab('owner')}
+                          className={`tab-button ${activeTab === 'lessThanOneYear' ? 'active' : ''}`}
+                          onClick={() => setActiveTab('lessThanOneYear')}
                         >
-                          Owner
-                        </button>
-                        <button 
-                          className={`tab-button ${activeTab === 'usage' ? 'active' : ''}`}
-                          onClick={() => setActiveTab('usage')}
-                        >
-                          Usage
-                        </button>
-                        <button 
-                          className={`tab-button ${activeTab === 'risk' ? 'active' : ''}`}
-                          onClick={() => setActiveTab('risk')}
-                        >
-                          Risk
+                          &lt; 1 year
                         </button>
                       </div>
-                      <div className={`tab-content ${activeTab === 'age' ? 'active' : ''}`}>
-                        {renderTabContent()}
-                      </div>
+                      {renderTabContent()}
                     </div>
                   </div>
 
