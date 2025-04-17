@@ -96,114 +96,103 @@ async def analyze_directory(folder_id: str):
         one_year_ago = datetime.now(timezone.utc) - timedelta(days=365)
         three_years_ago = datetime.now(timezone.utc) - timedelta(days=365*3)
         
-        less_than_one_year = 0
-        one_to_three_years = 0
-        more_than_three_years = 0
-        
-        # Initialize file type counters
-        file_types = {
-            'documents': {'count': 0, 'size': 0},
-            'spreadsheets': {'count': 0, 'size': 0},
-            'presentations': {'count': 0, 'size': 0},
-            'pdfs': {'count': 0, 'size': 0},
-            'images': {'count': 0, 'size': 0},
-            'others': {'count': 0, 'size': 0}
+        # Initialize age category counters
+        age_categories = {
+            'lessThanOneYear': {'count': 0, 'types': {}, 'risks': {}},
+            'oneToThreeYears': {'count': 0, 'types': {}, 'risks': {}},
+            'moreThanThreeYears': {'count': 0, 'types': {}, 'risks': {}}
         }
         
-        # Initialize owner statistics
-        owners = {}
-        internal_count = 0
-        external_count = 0
+        # Initialize file type counters for each age category
+        for age_category in age_categories.values():
+            age_category['types'] = {
+                'documents': {'count': 0, 'size': 0},
+                'spreadsheets': {'count': 0, 'size': 0},
+                'presentations': {'count': 0, 'size': 0},
+                'pdfs': {'count': 0, 'size': 0},
+                'images': {'count': 0, 'size': 0},
+                'others': {'count': 0, 'size': 0}
+            }
+            # Add dummy PII data
+            age_category['risks'] = {
+                'pii': {'count': 0, 'size': 0, 'percentage': 0},
+                'financial': {'count': 0, 'size': 0, 'percentage': 0},
+                'legal': {'count': 0, 'size': 0, 'percentage': 0},
+                'confidential': {'count': 0, 'size': 0, 'percentage': 0}
+            }
         
         for file in files:
-            # Calculate age distribution
+            # Calculate age and determine category
             modified_time = datetime.fromisoformat(file['modifiedTime'].replace('Z', '+00:00'))
-            if modified_time > one_year_ago:
-                less_than_one_year += 1
-            elif modified_time > three_years_ago:
-                one_to_three_years += 1
-            else:
-                more_than_three_years += 1
-                
-            # Calculate file type distribution
-            mime_type = file.get('mimeType', '')
             file_size = int(file.get('size', 0))
             
+            if modified_time > one_year_ago:
+                age_category = age_categories['lessThanOneYear']
+            elif modified_time > three_years_ago:
+                age_category = age_categories['oneToThreeYears']
+            else:
+                age_category = age_categories['moreThanThreeYears']
+            
+            age_category['count'] += 1
+            
+            # Calculate file type distribution
+            mime_type = file.get('mimeType', '')
+            
             if mime_type == 'application/vnd.google-apps.document':
-                file_types['documents']['count'] += 1
-                file_types['documents']['size'] += file_size
+                age_category['types']['documents']['count'] += 1
+                age_category['types']['documents']['size'] += file_size
             elif mime_type == 'application/vnd.google-apps.spreadsheet':
-                file_types['spreadsheets']['count'] += 1
-                file_types['spreadsheets']['size'] += file_size
+                age_category['types']['spreadsheets']['count'] += 1
+                age_category['types']['spreadsheets']['size'] += file_size
             elif mime_type == 'application/vnd.google-apps.presentation':
-                file_types['presentations']['count'] += 1
-                file_types['presentations']['size'] += file_size
+                age_category['types']['presentations']['count'] += 1
+                age_category['types']['presentations']['size'] += file_size
             elif mime_type == 'application/pdf':
-                file_types['pdfs']['count'] += 1
-                file_types['pdfs']['size'] += file_size
+                age_category['types']['pdfs']['count'] += 1
+                age_category['types']['pdfs']['size'] += file_size
             elif mime_type.startswith('image/'):
-                file_types['images']['count'] += 1
-                file_types['images']['size'] += file_size
+                age_category['types']['images']['count'] += 1
+                age_category['types']['images']['size'] += file_size
             else:
-                file_types['others']['count'] += 1
-                file_types['others']['size'] += file_size
-            
-            # Calculate owner distribution
-            owner = file.get('owners', [{}])[0]
-            owner_email = owner.get('emailAddress', '').lower()
-            owner_name = owner.get('displayName', 'Unknown')
-            
-            if owner_name not in owners:
-                owners[owner_name] = {
-                    'count': 0,
-                    'size': 0,
-                    'email': owner_email,
-                    'isInternal': '@grbg.com' in owner_email
-                }
-            
-            owners[owner_name]['count'] += 1
-            owners[owner_name]['size'] += file_size
-            
-            # Count internal vs external
-            if '@grbg.com' in owner_email:
-                internal_count += 1
-            else:
-                external_count += 1
+                age_category['types']['others']['count'] += 1
+                age_category['types']['others']['size'] += file_size
         
+        # Calculate percentages for each age category
         total_files = len(files)
         if total_files > 0:
-            less_than_one_year_pct = (less_than_one_year / total_files) * 100
-            one_to_three_years_pct = (one_to_three_years / total_files) * 100
-            more_than_three_years_pct = (more_than_three_years / total_files) * 100
-        else:
-            less_than_one_year_pct = 0
-            one_to_three_years_pct = 0
-            more_than_three_years_pct = 0
-        
-        # Convert owners dict to sorted list by file count
-        owners_list = [
-            {**stats, 'name': name}
-            for name, stats in owners.items()
-        ]
-        owners_list.sort(key=lambda x: x['count'], reverse=True)
+            for age_category in age_categories.values():
+                # Calculate type percentages
+                for type_data in age_category['types'].values():
+                    if age_category['count'] > 0:
+                        type_data['percentage'] = round((type_data['count'] / age_category['count']) * 100, 1)
+                    else:
+                        type_data['percentage'] = 0
+                
+                # Add dummy PII percentages (random values for now)
+                age_category['risks']['pii']['percentage'] = round(30 + (age_category['count'] % 20), 1)
+                age_category['risks']['financial']['percentage'] = round(20 + (age_category['count'] % 15), 1)
+                age_category['risks']['legal']['percentage'] = round(15 + (age_category['count'] % 10), 1)
+                age_category['risks']['confidential']['percentage'] = round(10 + (age_category['count'] % 5), 1)
         
         return {
             "folder_id": folder_id,
             "total_files": total_files,
             "ageDistribution": {
-                "lessThanOneYear": round(less_than_one_year_pct, 1),
-                "oneToThreeYears": round(one_to_three_years_pct, 1),
-                "moreThanThreeYears": round(more_than_three_years_pct, 1)
-            },
-            "lessThanOneYearCount": less_than_one_year,
-            "oneToThreeYearsCount": one_to_three_years,
-            "moreThanThreeYearsCount": more_than_three_years,
-            "fileTypes": file_types,
-            "ownerStats": {
-                "owners": owners_list,
-                "internalCount": internal_count,
-                "externalCount": external_count,
-                "totalOwners": len(owners)
+                "lessThanOneYear": {
+                    "count": age_categories['lessThanOneYear']['count'],
+                    "types": age_categories['lessThanOneYear']['types'],
+                    "risks": age_categories['lessThanOneYear']['risks']
+                },
+                "oneToThreeYears": {
+                    "count": age_categories['oneToThreeYears']['count'],
+                    "types": age_categories['oneToThreeYears']['types'],
+                    "risks": age_categories['oneToThreeYears']['risks']
+                },
+                "moreThanThreeYears": {
+                    "count": age_categories['moreThanThreeYears']['count'],
+                    "types": age_categories['moreThanThreeYears']['types'],
+                    "risks": age_categories['moreThanThreeYears']['risks']
+                }
             }
         }
     except Exception as e:

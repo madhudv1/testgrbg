@@ -85,58 +85,18 @@ function App() {
     console.log('Received new stats:', newStats);
     
     setStats(prevStats => {
-      // Calculate total files and size from file types
-      const totalFiles = newStats.totalFiles || Object.values(newStats.fileTypes || {}).reduce((sum, type) => sum + type.count, 0);
-      const totalSize = Object.values(newStats.fileTypes || {}).reduce((sum, type) => sum + type.size, 0);
-      
-      // Calculate counts from percentages and total files
-      const lessThanOneYearCount = Math.round((newStats.ageDistribution?.lessThanOneYear || 0) * totalFiles / 100);
-      const oneToThreeYearsCount = Math.round((newStats.ageDistribution?.oneToThreeYears || 0) * totalFiles / 100);
-      const moreThanThreeYearsCount = Math.round((newStats.ageDistribution?.moreThanThreeYears || 0) * totalFiles / 100);
-      
-      // Calculate sizes based on the same age distribution percentages
-      const lessThanOneYearSize = Math.round((newStats.ageDistribution?.lessThanOneYear || 0) * totalSize / 100);
-      const oneToThreeYearsSize = Math.round((newStats.ageDistribution?.oneToThreeYears || 0) * totalSize / 100);
-      const moreThanThreeYearsSize = Math.round((newStats.ageDistribution?.moreThanThreeYears || 0) * totalSize / 100);
-      
-      // Create updated stats object
+      // Create updated stats object with the new structure
       const updatedStats = {
         ...prevStats,
+        totalFiles: newStats.total_files,
         ageDistribution: {
-          lessThanOneYear: newStats.ageDistribution?.lessThanOneYear ?? prevStats.ageDistribution.lessThanOneYear,
-          oneToThreeYears: newStats.ageDistribution?.oneToThreeYears ?? prevStats.ageDistribution.oneToThreeYears,
-          moreThanThreeYears: newStats.ageDistribution?.moreThanThreeYears ?? prevStats.ageDistribution.moreThanThreeYears
-        },
-        // Use calculated counts and sizes
-        lessThanOneYearCount,
-        oneToThreeYearsCount,
-        moreThanThreeYearsCount,
-        lessThanOneYearSize,
-        oneToThreeYearsSize,
-        moreThanThreeYearsSize,
-        fileTypes: {
-          ...(prevStats.fileTypes || {}),
-          ...Object.keys(newStats.fileTypes || {}).reduce((acc, key) => {
-            acc[key] = { ...(prevStats.fileTypes?.[key] || {}), ...(newStats.fileTypes[key] || {}) };
-            return acc;
-          }, {})
-        },
-        totalFiles,
-        totalSize
+          lessThanOneYear: newStats.ageDistribution?.lessThanOneYear || prevStats.ageDistribution.lessThanOneYear,
+          oneToThreeYears: newStats.ageDistribution?.oneToThreeYears || prevStats.ageDistribution.oneToThreeYears,
+          moreThanThreeYears: newStats.ageDistribution?.moreThanThreeYears || prevStats.ageDistribution.moreThanThreeYears
+        }
       };
       
-      console.log('Updated stats:', {
-        totalFiles,
-        totalSize,
-        lessThanOneYearCount,
-        oneToThreeYearsCount,
-        moreThanThreeYearsCount,
-        lessThanOneYearSize,
-        oneToThreeYearsSize,
-        moreThanThreeYearsSize,
-        ageDistribution: updatedStats.ageDistribution
-      });
-      
+      console.log('Updated stats:', updatedStats);
       return updatedStats;
     });
   };
@@ -299,7 +259,8 @@ function App() {
                     className="bar" 
                     style={{ 
                       width: `${stats.percentage}%`,
-                      backgroundColor: 'var(--purple-progress)'
+                      backgroundColor: fileTypeColors[type],
+                      opacity: 0.85
                     }}
                   ></div>
                 </div>
@@ -325,7 +286,8 @@ function App() {
                     className="bar" 
                     style={{ 
                       width: `${stats.percentage}%`,
-                      backgroundColor: 'var(--purple-progress)'
+                      backgroundColor: '#DB4437',
+                      opacity: 0.85
                     }}
                   ></div>
                 </div>
@@ -345,11 +307,11 @@ function App() {
   const renderTabContent = () => {
     switch (activeTab) {
       case 'moreThanThreeYears':
-        return renderAgeSection(stats.moreThanThreeYears, 'Files > 3 years old');
+        return renderAgeSection(stats.ageDistribution.moreThanThreeYears, 'Files > 3 years old');
       case 'oneToThreeYears':
-        return renderAgeSection(stats.oneToThreeYears, 'Files 1-3 years old');
+        return renderAgeSection(stats.ageDistribution.oneToThreeYears, 'Files 1-3 years old');
       case 'lessThanOneYear':
-        return renderAgeSection(stats.lessThanOneYear, 'Files < 1 year old');
+        return renderAgeSection(stats.ageDistribution.lessThanOneYear, 'Files < 1 year old');
       case 'type':
         return renderFileTypeContent();
       case 'owner':
