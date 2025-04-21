@@ -12,6 +12,7 @@ import PyPDF2
 import os
 import json
 import pickle
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +26,130 @@ class GoogleDriveService:
     def __init__(self):
         self.credentials = None
         self.service = None
-        self.load_credentials()
         logger.info(f"Token file path: {self.TOKEN_FILE}")
+
+    async def ensure_service(self):
+        """Ensure the service is built with timeout."""
+        if not self.service:
+            try:
+                async with asyncio.timeout(5):  # 5 second timeout
+                    await asyncio.to_thread(self._build_service)
+            except asyncio.TimeoutError:
+                logger.error("Timeout building Google Drive service")
+                raise ValueError("Timeout building service")
+            except Exception as e:
+                logger.error(f"Error building service: {e}")
+                raise
+
+    def _build_service(self):
+        """Internal method to build the service."""
+        try:
+            credentials = self.load_credentials()
+            if not credentials:
+                raise ValueError("Not authenticated. Please authenticate first.")
+            
+            # Validate refresh token exists
+            if not credentials.refresh_token:
+                logger.error("Credentials missing refresh token")
+                raise ValueError("Invalid credentials: missing refresh token")
+            
+            # Check if expired and try to refresh
+            if credentials.expired:
+                try:
+                    credentials.refresh(Request())
+                    self.save_credentials(credentials)
+                except Exception as e:
+                    logger.error(f"Failed to refresh expired credentials: {e}")
+                    raise ValueError("Failed to refresh credentials")
+                
+            self.service = build('drive', 'v3', credentials=credentials)
+            return self.service
+        except Exception as e:
+            logger.error(f"Error building service: {e}")
+            raise
+
+    async def is_authenticated(self):
+        """Check if we have valid credentials."""
+        logger.debug("********** 1 *******")
+        logger.debug("Starting is_authenticated check")
+        try:
+            credentials = self.load_credentials()
+            logger.debug("********** 2 *******")
+            logger.debug(f"Loaded credentials: {credentials is not None}")
+            
+            if not credentials:
+                logger.debug("No credentials found")
+                return False
+                
+            # Validate refresh token exists
+            if not credentials.refresh_token:
+                logger.error("Credentials missing refresh token")
+                return False
+                
+            # Check if expired and try to refresh
+            if credentials.expired:
+                logger.debug("Credentials expired, attempting refresh")
+                try:
+                    async with asyncio.timeout(5):  # 5 second timeout
+                        await asyncio.to_thread(lambda: credentials.refresh(Request()))
+                        await asyncio.to_thread(self.save_credentials, credentials)
+                        logger.debug("Successfully refreshed credentials")
+                except asyncio.TimeoutError:
+                    logger.error("Timeout refreshing credentials")
+                    return False
+                except Exception as e:
+                    logger.error(f"Failed to refresh expired credentials: {e}")
+                    return False
+            
+            logger.debug("Authentication check successful")
+            return True
+        except Exception as e:
+            logger.error(f"Error checking authentication: {e}", exc_info=True)
+            return False
+
+    async def list_files(self, page_size: int = 100) -> List[Dict]:
+        """List files from Google Drive."""
+        await self.ensure_service()
+        
+        try:
+            async with asyncio.timeout(10):  # 10 second timeout
+                results = await asyncio.to_thread(
+                    lambda: self.service.files().list(
+                        pageSize=page_size,
+                        fields="files(id, name, mimeType, modifiedTime, owners, lastModifyingUser)"
+                    ).execute()
+                )
+            return results.get('files', [])
+        except asyncio.TimeoutError:
+            logger.error("Timeout listing files")
+            raise ValueError("Timeout listing files")
+        except Exception as e:
+            logger.error(f"Error listing files: {e}")
+            raise
+
+    async def list_directories(self, page_size: int = 100) -> List[Dict]:
+        """List top-level directories (folders) owned by the authenticated user from Google Drive."""
+        try:
+            await self.ensure_service()
+            
+            query = "mimeType='application/vnd.google-apps.folder' and 'me' in owners and 'root' in parents and trashed = false"
+            
+            async with asyncio.timeout(10):  # 10 second timeout
+                results = await asyncio.to_thread(
+                    lambda: self.service.files().list(
+                        q=query,
+                        pageSize=page_size,
+                        fields="files(id, name, mimeType, modifiedTime, owners, lastModifyingUser, createdTime)"
+                    ).execute()
+                )
+            
+            return results.get('files', [])
+        except asyncio.TimeoutError:
+            logger.error("Timeout listing directories")
+            raise ValueError("Timeout listing directories")
+        except Exception as e:
+            logger.error(f"Error listing directories: {e}")
+            raise
 
     def load_credentials(self):
         """Load credentials from token file."""
@@ -72,57 +195,38 @@ class GoogleDriveService:
             logger.error(f"Error saving credentials: {e}")
             return False
 
-    def is_authenticated(self):
-        """Check if we have valid credentials."""
-        try:
-            credentials = self.load_credentials()
-            if not credentials:
-                return False
-                
-            # Validate refresh token exists
-            if not credentials.refresh_token:
-                logger.error("Credentials missing refresh token")
-                return False
-                
-            # Check if expired and try to refresh
-            if credentials.expired:
-                try:
-                    credentials.refresh(Request())
-                    self.save_credentials(credentials)
-                except Exception as e:
-                    logger.error(f"Failed to refresh expired credentials: {e}")
-                    return False
-                    
-            return True
-        except Exception as e:
-            logger.error(f"Error checking authentication: {e}")
-            return False
-
-    def get_auth_url(self) -> str:
+    async def get_auth_url(self, state: str = None) -> str:
         """Generate the authorization URL for Google OAuth2."""
-        client_config = {
-            "web": {
-                "client_id": settings.GOOGLE_CLIENT_ID,
-                "client_secret": settings.GOOGLE_CLIENT_SECRET,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [settings.GOOGLE_REDIRECT_URI],
+        logger.debug("Generating auth URL")
+        try:
+            client_config = {
+                "web": {
+                    "client_id": settings.GOOGLE_CLIENT_ID,
+                    "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "redirect_uris": [settings.GOOGLE_REDIRECT_URI],
+                }
             }
-        }
-        
-        flow = Flow.from_client_config(
-            client_config=client_config,
-            scopes=self.SCOPES
-        )
-        flow.redirect_uri = settings.GOOGLE_REDIRECT_URI
-        
-        # Ensure we request offline access and refresh token
-        auth_url, _ = flow.authorization_url(
-            access_type='offline',
-            prompt='consent',
-            include_granted_scopes='true'
-        )
-        return auth_url
+            
+            flow = Flow.from_client_config(
+                client_config=client_config,
+                scopes=self.SCOPES
+            )
+            flow.redirect_uri = settings.GOOGLE_REDIRECT_URI
+            
+            # Ensure we request offline access and refresh token
+            auth_url, _ = flow.authorization_url(
+                access_type='offline',
+                prompt='consent',
+                include_granted_scopes='true',
+                state=state
+            )
+            logger.debug(f"Generated auth URL with redirect_uri: {settings.GOOGLE_REDIRECT_URI}")
+            return auth_url
+        except Exception as e:
+            logger.error(f"Error generating auth URL: {e}", exc_info=True)
+            raise
 
     def get_credentials_from_code(self, code: str) -> Credentials:
         """Get credentials from authorization code."""
@@ -160,45 +264,6 @@ class GoogleDriveService:
             logger.error(f"Error getting credentials from code: {e}")
             raise
 
-    def build_service(self):
-        """Build the Google Drive service."""
-        try:
-            credentials = self.load_credentials()
-            if not credentials:
-                raise ValueError("Not authenticated. Please authenticate first.")
-            
-            # Validate refresh token exists
-            if not credentials.refresh_token:
-                logger.error("Credentials missing refresh token")
-                raise ValueError("Invalid credentials: missing refresh token")
-            
-            # Check if expired and try to refresh
-            if credentials.expired:
-                try:
-                    credentials.refresh(Request())
-                    self.save_credentials(credentials)
-                except Exception as e:
-                    logger.error(f"Failed to refresh expired credentials: {e}")
-                    raise ValueError("Failed to refresh credentials")
-                
-            self.service = build('drive', 'v3', credentials=credentials)
-            return self.service
-        except Exception as e:
-            logger.error(f"Error building service: {e}")
-            raise
-
-    def list_files(self, page_size: int = 100) -> List[Dict]:
-        """List files from Google Drive."""
-        if not self.service:
-            self.build_service()
-        
-        results = self.service.files().list(
-            pageSize=page_size,
-            fields="files(id, name, mimeType, modifiedTime, owners, lastModifyingUser)"
-        ).execute()
-        
-        return results.get('files', [])
-
     def get_file_metadata(self, file_id: str) -> Dict:
         """Get detailed metadata for a specific file."""
         if not self.service:
@@ -235,41 +300,51 @@ class GoogleDriveService:
             logger.error(f"Error in get_inactive_files: {str(e)}", exc_info=True)
             raise 
 
-    def list_directories(self, page_size: int = 100) -> List[Dict]:
-        """List top-level directories (folders) owned by the authenticated user from Google Drive."""
-        try:
-            if not self.service:
-                self.build_service()
-            
-            query = "mimeType='application/vnd.google-apps.folder' and 'me' in owners and 'root' in parents and trashed = false"
-            results = self.service.files().list(
-                q=query,
-                pageSize=page_size,
-                fields="files(id, name, mimeType, modifiedTime, owners, lastModifyingUser, createdTime)"
-            ).execute()
-            
-            return results.get('files', [])
-        except Exception as e:
-            logger.error(f"Error listing directories: {e}")
-            raise
-
-    def list_directory(self, folder_id: str, page_size: int = 100) -> List[Dict]:
+    async def list_directory(self, folder_id: str, page_size: int = 100, recursive: bool = False) -> List[Dict]:
         """List files in a specific directory."""
-        logger.info(f"Attempting to list directory with ID: {folder_id}")
-        if not self.service:
-            self.build_service()
+        logger.info(f"Attempting to list directory with ID: {folder_id} (recursive: {recursive})")
+        await self.ensure_service()
+        
+        if recursive:
+            return await self._recursive_list_directory(folder_id, page_size)
         
         query = f"'{folder_id}' in parents and trashed = false"
         try:
-            results = self.service.files().list(
-                q=query,
-                pageSize=page_size,
-                fields="files(id, name, mimeType, modifiedTime, owners, lastModifyingUser, createdTime, size)"
-            ).execute()
+            results = await asyncio.to_thread(
+                lambda: self.service.files().list(
+            q=query,
+            pageSize=page_size,
+            fields="files(id, name, mimeType, modifiedTime, owners, lastModifyingUser, createdTime, size)"
+        ).execute()
+            )
             logger.info(f"Successfully listed directory {folder_id}")
             return results.get('files', [])
         except HttpError as error:
             logger.error(f"Google Drive API error listing directory {folder_id}: {error}")
+            raise
+
+    async def _recursive_list_directory(self, folder_id: str, page_size: int = 100) -> List[Dict]:
+        """Recursively list all files in a directory and its subdirectories."""
+        all_files = []
+        
+        # Get files in current directory
+        try:
+            files = await self.list_directory(folder_id, page_size, recursive=False)
+            
+            # Process each file/folder
+            for file in files:
+                if file['mimeType'] == 'application/vnd.google-apps.folder':
+                    # Recursively get files from subdirectory
+                    logger.info(f"Recursively listing subdirectory: {file['name']} ({file['id']})")
+                    sub_files = await self._recursive_list_directory(file['id'], page_size)
+                    all_files.extend(sub_files)
+                else:
+                    all_files.append(file)
+            
+            return all_files
+            
+        except Exception as e:
+            logger.error(f"Error in recursive directory listing for folder {folder_id}: {e}")
             raise
 
     async def get_file_content(self, file_id: str) -> str:
@@ -281,44 +356,86 @@ class GoogleDriveService:
             # Get file metadata to check mime type
             file_metadata = self.get_file_metadata(file_id)
             mime_type = file_metadata.get('mimeType', '')
+            timeout = 30  # 30 seconds timeout
             
-            # Check file size before downloading
-            file_size = self.get_file_size(file_id)
+            # Handle Google Workspace files
+            if mime_type.startswith('application/vnd.google-apps.'):
+                if mime_type == 'application/vnd.google-apps.document':
+                    try:
+                        response = await asyncio.wait_for(
+                            asyncio.to_thread(
+                                self.service.files().export(
+                                    fileId=file_id,
+                                    mimeType='text/plain'
+                                ).execute
+                            ),
+                            timeout=timeout
+                        )
+                        return response if isinstance(response, str) else response.decode('utf-8')
+                    except asyncio.TimeoutError:
+                        logger.error(f"Timeout exporting Google Doc {file_id}")
+                        return ""
+                    except Exception as e:
+                        logger.error(f"Error exporting Google Doc {file_id}: {e}")
+                        return ""
+                
+                elif mime_type == 'application/vnd.google-apps.spreadsheet':
+                    try:
+                        response = await asyncio.wait_for(
+                            asyncio.to_thread(
+                                self.service.files().export(
+                                    fileId=file_id,
+                                    mimeType='text/csv'
+                                ).execute
+                            ),
+                            timeout=timeout
+                        )
+                        return response if isinstance(response, str) else response.decode('utf-8')
+                    except asyncio.TimeoutError:
+                        logger.error(f"Timeout exporting Google Spreadsheet {file_id}")
+                        return ""
+                    except Exception as e:
+                        logger.error(f"Error exporting Google Spreadsheet {file_id}: {e}")
+                        return ""
+                
+                elif mime_type == 'application/vnd.google-apps.presentation':
+                    try:
+                        response = await asyncio.wait_for(
+                            asyncio.to_thread(
+                                self.service.files().export(
+                                    fileId=file_id,
+                                    mimeType='text/plain'
+                                ).execute
+                            ),
+                            timeout=timeout
+                        )
+                        return response if isinstance(response, str) else response.decode('utf-8')
+                    except asyncio.TimeoutError:
+                        logger.error(f"Timeout exporting Google Presentation {file_id}")
+                        return ""
+                    except Exception as e:
+                        logger.error(f"Error exporting Google Presentation {file_id}: {e}")
+                        return ""
+                
+                else:
+                    logger.warning(f"Unsupported Google Workspace type: {mime_type}")
+                    return ""
+            
+            # For non-Google Workspace files, check size first
+            file_size = int(file_metadata.get('size', 0))
             if file_size > 10 * 1024 * 1024:  # 10MB limit
                 logger.warning(f"File {file_id} is too large ({file_size} bytes)")
                 return ""
             
-            # Handle different file types
-            if mime_type == 'application/vnd.google-apps.document':
-                # Google Docs
+            # Handle regular files
+            if mime_type == 'application/pdf':
                 try:
-                    doc = self.service.files().export(
-                        fileId=file_id,
-                        mimeType='text/plain'
-                    ).execute()
-                    return doc.decode('utf-8')
-                except HttpError as e:
-                    logger.error(f"Error exporting Google Doc: {str(e)}")
-                    return ""
-                    
-            elif mime_type == 'application/vnd.google-apps.spreadsheet':
-                # Google Sheets
-                try:
-                    sheet = self.service.files().export(
-                        fileId=file_id,
-                        mimeType='text/csv'
-                    ).execute()
-                    return sheet.decode('utf-8')
-                except HttpError as e:
-                    logger.error(f"Error exporting Google Sheet: {str(e)}")
-                    return ""
-                    
-            elif mime_type == 'application/pdf':
-                # PDF files
-                try:
-                    pdf_content = self.service.files().get_media(
-                        fileId=file_id
-                    ).execute()
+                    pdf_content = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            self.service.files().get_media(fileId=file_id).execute
+                        ),
+                        timeout=timeout
+                    )
                     
                     # Convert PDF to text
                     pdf_file = io.BytesIO(pdf_content)
@@ -330,25 +447,37 @@ class GoogleDriveService:
                         text += page.extract_text() + "\n"
                     
                     return text
+                except asyncio.TimeoutError:
+                    logger.error(f"Timeout downloading PDF {file_id}")
+                    return ""
                 except Exception as e:
                     logger.error(f"Error processing PDF file: {str(e)}")
                     return ""
-                    
+            
             elif mime_type.startswith('text/'):
-                # Text files
                 try:
-                    content = self.service.files().get_media(
-                        fileId=file_id
-                    ).execute()
+                    content = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            self.service.files().get_media(fileId=file_id).execute
+                        ),
+                        timeout=timeout
+                    )
                     return content.decode('utf-8')
+                except asyncio.TimeoutError:
+                    logger.error(f"Timeout downloading text file {file_id}")
+                    return ""
                 except UnicodeDecodeError:
                     logger.error(f"Error decoding text file {file_id}")
                     return ""
-                    
+            
+            elif mime_type.startswith('image/'):
+                logger.info(f"Skipping image file {file_id} - OCR not yet implemented")
+                return ""
+            
             else:
                 logger.warning(f"Unsupported mime type: {mime_type}")
                 return ""
-                
+        
         except Exception as e:
             logger.error(f"Error getting file content: {str(e)}")
             return ""

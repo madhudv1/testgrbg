@@ -1,0 +1,11 @@
+Contact Information:
+john.doe@example.com
+(555) 123-4567
+jane.smith@company.com
++1 (444) 987-6543
+
+Some normal text in between to make it more realistic.
+
+Additional contacts:
+support@test.com
+123-456-7890 

@@ -1,10 +1,17 @@
-from fastapi import APIRouter, HTTPException
-from typing import Dict, List
+from fastapi import APIRouter, HTTPException, Request, Depends, status
+from typing import Dict, List, Optional
 from ....services.google_drive import GoogleDriveService
 from ....core.config import settings
 import logging
 from ....services.genai_service import GenAIService
 from datetime import datetime, timezone, timedelta
+from ....services.local_llm_service import LocalLLMService
+from ....services.rate_limiter import LLMRateLimiter
+from fastapi.responses import RedirectResponse
+import json
+import uuid
+import asyncio
+from ....core.auth import get_current_user
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -14,28 +21,47 @@ router = APIRouter()
 drive_service = GoogleDriveService()
 genai_service = GenAIService()
 
-@router.get("/auth/url")
-async def get_auth_url():
-    """Get the Google OAuth2 authorization URL."""
+# Initialize services
+local_llm = LocalLLMService()
+rate_limiter = LLMRateLimiter()
+
+def categorize_file_by_age(file: Dict) -> str:
+    """
+    Categorize a file based on its modification date.
+    Returns one of: "moreThanThreeYears", "oneToThreeYears", "lessThanOneYear"
+    """
     try:
-        auth_url = drive_service.get_auth_url()
-        return {"auth_url": auth_url}
+        modified_time = datetime.fromisoformat(file['modifiedTime'].replace('Z', '+00:00'))
+        now = datetime.now(timezone.utc)
+        age = now - modified_time
+        
+        if age > timedelta(days=3*365):  # More than 3 years
+            return "moreThanThreeYears"
+        elif age > timedelta(days=365):   # Between 1-3 years
+            return "oneToThreeYears"
+        else:                             # Less than 1 year
+            return "lessThanOneYear"
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error categorizing file age: {e}")
+        return "moreThanThreeYears"  # Default to oldest category if we can't determine age
+
+@router.get("/auth/url")
+async def get_auth_url_redirect():
+    """Redirect to the new auth URL endpoint."""
+    logger.info("Redirecting old auth URL endpoint to new endpoint")
+    return RedirectResponse(url="/api/v1/auth/google/login")
 
 @router.get("/auth/callback")
-async def auth_callback(code: str):
-    """Handle the OAuth2 callback and get credentials."""
-    try:
-        credentials = drive_service.get_credentials_from_code(code)
-        return {"message": "Successfully authenticated"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+async def auth_callback_redirect(code: str):
+    """Redirect to the new auth callback endpoint."""
+    logger.info("Redirecting old auth callback endpoint to new endpoint")
+    return RedirectResponse(url=f"/api/v1/auth/google/callback?code={code}")
 
 @router.get("/auth/status")
-async def get_auth_status():
-    """Check if the service is authenticated."""
-    return {"authenticated": drive_service.is_authenticated()}
+async def get_auth_status_redirect():
+    """Redirect to the new auth status endpoint."""
+    logger.info("Redirecting old auth status endpoint to new endpoint")
+    return RedirectResponse(url="/api/v1/auth/google/status")
 
 @router.get("/files")
 async def list_files(page_size: int = 100):
@@ -84,120 +110,165 @@ async def list_directory_files(folder_id: str, page_size: int = 100):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/directories/{folder_id}/analyze")
-async def analyze_directory(folder_id: str):
-    """Analyze all files in a directory."""
-    if not drive_service.is_authenticated():
-        raise HTTPException(status_code=401, detail="Not authenticated. Please authenticate first.")
+async def analyze_directory(
+    folder_id: str,
+    recursive: bool = True,
+    drive_service: GoogleDriveService = Depends(get_current_user)
+):
+    """
+    Analyze a directory and its contents, optionally including subdirectories if recursive=True.
+    Returns statistics about file types and sensitive content organized by age categories.
+    """
     try:
+        # Initialize the local LLM service
+        local_llm = LocalLLMService()
+        
         # Get all files in the directory
-        files = drive_service.list_directory(folder_id)
+        files = await drive_service.list_directory(folder_id, recursive=recursive)
         
-        # Calculate age distribution
-        one_year_ago = datetime.now(timezone.utc) - timedelta(days=365)
-        three_years_ago = datetime.now(timezone.utc) - timedelta(days=365*3)
-        
-        # Initialize age category counters
-        age_categories = {
-            'lessThanOneYear': {'count': 0, 'types': {}, 'risks': {}},
-            'oneToThreeYears': {'count': 0, 'types': {}, 'risks': {}},
-            'moreThanThreeYears': {'count': 0, 'types': {}, 'risks': {}}
-        }
-        
-        # Initialize file type counters for each age category
-        for age_category in age_categories.values():
-            age_category['types'] = {
-                'documents': {'count': 0, 'size': 0},
-                'spreadsheets': {'count': 0, 'size': 0},
-                'presentations': {'count': 0, 'size': 0},
-                'pdfs': {'count': 0, 'size': 0},
-                'images': {'count': 0, 'size': 0},
-                'others': {'count': 0, 'size': 0}
-            }
-            # Add dummy PII data
-            age_category['risks'] = {
-                'pii': {'count': 0, 'size': 0, 'percentage': 0},
-                'financial': {'count': 0, 'size': 0, 'percentage': 0},
-                'legal': {'count': 0, 'size': 0, 'percentage': 0},
-                'confidential': {'count': 0, 'size': 0, 'percentage': 0}
-            }
-        
-        for file in files:
-            # Calculate age and determine category
-            modified_time = datetime.fromisoformat(file['modifiedTime'].replace('Z', '+00:00'))
-            file_size = int(file.get('size', 0))
-            
-            if modified_time > one_year_ago:
-                age_category = age_categories['lessThanOneYear']
-            elif modified_time > three_years_ago:
-                age_category = age_categories['oneToThreeYears']
-            else:
-                age_category = age_categories['moreThanThreeYears']
-            
-            age_category['count'] += 1
-            
-            # Calculate file type distribution
-            mime_type = file.get('mimeType', '')
-            
-            if mime_type == 'application/vnd.google-apps.document':
-                age_category['types']['documents']['count'] += 1
-                age_category['types']['documents']['size'] += file_size
-            elif mime_type == 'application/vnd.google-apps.spreadsheet':
-                age_category['types']['spreadsheets']['count'] += 1
-                age_category['types']['spreadsheets']['size'] += file_size
-            elif mime_type == 'application/vnd.google-apps.presentation':
-                age_category['types']['presentations']['count'] += 1
-                age_category['types']['presentations']['size'] += file_size
-            elif mime_type == 'application/pdf':
-                age_category['types']['pdfs']['count'] += 1
-                age_category['types']['pdfs']['size'] += file_size
-            elif mime_type.startswith('image/'):
-                age_category['types']['images']['count'] += 1
-                age_category['types']['images']['size'] += file_size
-            else:
-                age_category['types']['others']['count'] += 1
-                age_category['types']['others']['size'] += file_size
-        
-        # Calculate percentages for each age category
-        total_files = len(files)
-        if total_files > 0:
-            for age_category in age_categories.values():
-                # Calculate type percentages
-                for type_data in age_category['types'].values():
-                    if age_category['count'] > 0:
-                        type_data['percentage'] = round((type_data['count'] / age_category['count']) * 100, 1)
-                    else:
-                        type_data['percentage'] = 0
-                
-                # Add dummy PII percentages (random values for now)
-                age_category['risks']['pii']['percentage'] = round(30 + (age_category['count'] % 20), 1)
-                age_category['risks']['financial']['percentage'] = round(20 + (age_category['count'] % 15), 1)
-                age_category['risks']['legal']['percentage'] = round(15 + (age_category['count'] % 10), 1)
-                age_category['risks']['confidential']['percentage'] = round(10 + (age_category['count'] % 5), 1)
-        
-        return {
-            "folder_id": folder_id,
-            "total_files": total_files,
-            "ageDistribution": {
-                "lessThanOneYear": {
-                    "count": age_categories['lessThanOneYear']['count'],
-                    "types": age_categories['lessThanOneYear']['types'],
-                    "risks": age_categories['lessThanOneYear']['risks']
+        # Initialize response structure
+        response = {
+            "moreThanThreeYears": {
+                "total_documents": 0,
+                "total_sensitive": 0,
+                "file_types": {
+                    "documents": [],
+                    "spreadsheets": [],
+                    "presentations": [],
+                    "pdfs": [],
+                    "images": [],
+                    "others": []
                 },
-                "oneToThreeYears": {
-                    "count": age_categories['oneToThreeYears']['count'],
-                    "types": age_categories['oneToThreeYears']['types'],
-                    "risks": age_categories['oneToThreeYears']['risks']
-                },
-                "moreThanThreeYears": {
-                    "count": age_categories['moreThanThreeYears']['count'],
-                    "types": age_categories['moreThanThreeYears']['types'],
-                    "risks": age_categories['moreThanThreeYears']['risks']
+                "sensitive_info": {
+                    "email": [],
+                    "ssn": [],
+                    "phone": [],
+                    "credit_card": [],
+                    "ip_address": []
                 }
-            }
+            },
+            "oneToThreeYears": {
+                "total_documents": 0,
+                "total_sensitive": 0,
+                "file_types": {
+                    "documents": [],
+                    "spreadsheets": [],
+                    "presentations": [],
+                    "pdfs": [],
+                    "images": [],
+                    "others": []
+                },
+                "sensitive_info": {
+                    "email": [],
+                    "ssn": [],
+                    "phone": [],
+                    "credit_card": [],
+                    "ip_address": []
+                }
+            },
+            "lessThanOneYear": {
+                "total_documents": 0,
+                "total_sensitive": 0,
+                "file_types": {
+                    "documents": [],
+                    "spreadsheets": [],
+                    "presentations": [],
+                    "pdfs": [],
+                    "images": [],
+                    "others": []
+                },
+                "sensitive_info": {
+                    "email": [],
+                    "ssn": [],
+                    "phone": [],
+                    "credit_card": [],
+                    "ip_address": []
+                }
+            },
+            "scan_complete": False
         }
+        
+        # Process each file
+        for file in files:
+            # Categorize by age
+            age_category = categorize_file_by_age(file)
+            
+            # Increment total documents for this age category
+            response[age_category]["total_documents"] += 1
+            
+            # Categorize file type and add to appropriate list
+            file_type = categorize_file_type(file)
+            response[age_category]["file_types"][file_type].append(file)
+            
+            try:
+                # Get file content and analyze with LLM
+                content = await drive_service.get_file_content(file['id'])
+                if content:
+                    analysis = await local_llm.analyze_text(content)
+                    if analysis.is_sensitive:
+                        # Increment sensitive document count
+                        response[age_category]["total_sensitive"] += 1
+                        
+                        # Add file to appropriate sensitive categories
+                        sensitive_file = {
+                            'file': file,
+                            'confidence': analysis.confidence,
+                            'explanation': analysis.explanation,
+                            'categories': analysis.categories  # List of detected sensitive categories
+                        }
+                        
+                        # Add to each detected sensitive category
+                        for category in analysis.categories:
+                            if category in response[age_category]["sensitive_info"]:
+                                response[age_category]["sensitive_info"][category].append(sensitive_file)
+                            
+            except Exception as e:
+                logger.error(f"Error analyzing file {file['name']}: {e}")
+                continue
+        
+        response["scan_complete"] = True
+        return response
+        
+    except ValueError as e:
+        logger.error(f"Value error in analyze_directory: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except asyncio.TimeoutError:
+        logger.error("Timeout analyzing directory")
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Operation timed out"
+        )
     except Exception as e:
-        logger.error(f"Error analyzing directory: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error analyzing directory: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+def categorize_file_type(file: Dict) -> str:
+    """
+    Categorize a file based on its MIME type or extension.
+    Returns one of: documents, spreadsheets, presentations, pdfs, images, others
+    """
+    mime_type = file.get('mimeType', '').lower()
+    name = file.get('name', '').lower()
+    
+    if 'document' in mime_type or name.endswith(('.doc', '.docx')):
+        return "documents"
+    elif 'spreadsheet' in mime_type or name.endswith(('.xls', '.xlsx', '.csv')):
+        return "spreadsheets"
+    elif 'presentation' in mime_type or name.endswith(('.ppt', '.pptx')):
+        return "presentations"
+    elif 'pdf' in mime_type or name.endswith('.pdf'):
+        return "pdfs"
+    elif ('image' in mime_type or 
+          any(name.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp'])):
+        return "images"
+    else:
+        return "others"
 
 @router.get("/directories/{folder_id}/categorize")
 async def categorize_directory(folder_id: str, page_size: int = 100):
@@ -214,14 +285,28 @@ async def categorize_directory(folder_id: str, page_size: int = 100):
         logger.error(f"Error categorizing directory: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/directories")
-async def list_directories(page_size: int = 100):
-    """List directories (folders) from Google Drive."""
-    if not drive_service.is_authenticated():
-        raise HTTPException(status_code=401, detail="Not authenticated. Please authenticate first.")
+@router.get("/directories", response_model=List[Dict])
+async def list_directories(
+    drive_service: GoogleDriveService = Depends(get_current_user)
+) -> List[Dict]:
+    """List all top-level directories in Google Drive."""
     try:
-        directories = drive_service.list_directories(page_size)
-        return {"directories": directories}
+        return await drive_service.list_directories()
+    except ValueError as e:
+        logger.error(f"Value error in list_directories: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except asyncio.TimeoutError:
+        logger.error("Timeout listing directories")
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Operation timed out"
+        )
     except Exception as e:
-        logger.error(f"Error listing directories: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e)) 
+        logger.error(f"Error listing directories: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        ) 
