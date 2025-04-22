@@ -5,62 +5,65 @@ import DirectoryList from './components/DirectoryList';
 import DirectoryExplorer from './components/DirectoryExplorer';
 import Klio from './components/Klio';
 import './App.css';
+import config from './config';
 
 function App() {
   const [selectedDirectory, setSelectedDirectory] = useState(null);
-  const [activeTab, setActiveTab] = useState('age');
+  const [activeTab, setActiveTab] = useState('moreThanThreeYears');
   const [typeSort, setTypeSort] = useState('count'); // 'count' or 'size'
   const [stats, setStats] = useState({
     staleDocuments: 0,
     duplicateDocuments: 0,
     sensitiveDocuments: 0,
-    // Dummy data for development
-    moreThanThreeYears: {
-      types: {
-        documents: { count: 45, size: 15000000, percentage: 30 },
-        spreadsheets: { count: 30, size: 8000000, percentage: 20 },
-        presentations: { count: 15, size: 20000000, percentage: 10 },
-        pdfs: { count: 30, size: 25000000, percentage: 20 },
-        images: { count: 15, size: 12000000, percentage: 10 },
-        others: { count: 15, size: 5000000, percentage: 10 }
+    ageDistribution: {
+      // Dummy data for development
+      moreThanThreeYears: {
+        types: {
+          documents: { count: 45, size: 15000000, percentage: 30 },
+          spreadsheets: { count: 30, size: 8000000, percentage: 20 },
+          presentations: { count: 15, size: 20000000, percentage: 10 },
+          pdfs: { count: 30, size: 25000000, percentage: 20 },
+          images: { count: 15, size: 12000000, percentage: 10 },
+          others: { count: 15, size: 5000000, percentage: 10 }
+        },
+        risks: {
+          pii: { count: 20, size: 5000000, percentage: 40 },
+          financial: { count: 15, size: 4000000, percentage: 30 },
+          legal: { count: 10, size: 3000000, percentage: 20 },
+          confidential: { count: 5, size: 1000000, percentage: 10 }
+        }
       },
-      risks: {
-        pii: { count: 20, size: 5000000, percentage: 40 },
-        financial: { count: 15, size: 4000000, percentage: 30 },
-        legal: { count: 10, size: 3000000, percentage: 20 },
-        confidential: { count: 5, size: 1000000, percentage: 10 }
-      }
-    },
-    oneToThreeYears: {
-      types: {
-        documents: { count: 30, size: 10000000, percentage: 25 },
-        spreadsheets: { count: 25, size: 6000000, percentage: 20 },
-        presentations: { count: 20, size: 15000000, percentage: 15 },
-        pdfs: { count: 25, size: 20000000, percentage: 20 },
-        images: { count: 15, size: 10000000, percentage: 12 },
-        others: { count: 10, size: 4000000, percentage: 8 }
+      oneToThreeYears: {
+        types: {
+          documents: { count: 30, size: 10000000, percentage: 25 },
+          spreadsheets: { count: 25, size: 6000000, percentage: 20 },
+          presentations: { count: 20, size: 15000000, percentage: 15 },
+          pdfs: { count: 25, size: 20000000, percentage: 20 },
+          images: { count: 15, size: 10000000, percentage: 12 },
+          others: { count: 10, size: 4000000, percentage: 8 }
+        },
+        risks: {
+          pii: { count: 15, size: 4000000, percentage: 35 },
+          financial: { count: 12, size: 3000000, percentage: 28 },
+          legal: { count: 10, size: 2500000, percentage: 23 },
+          confidential: { count: 6, size: 1500000, percentage: 14 }
+        }
       },
-      risks: {
-        pii: { count: 15, size: 4000000, percentage: 35 },
-        financial: { count: 12, size: 3000000, percentage: 28 },
-        legal: { count: 10, size: 2500000, percentage: 23 },
-        confidential: { count: 6, size: 1500000, percentage: 14 }
-      }
-    },
-    lessThanOneYear: {
-      types: {
-        documents: { count: 20, size: 8000000, percentage: 22 },
-        spreadsheets: { count: 18, size: 5000000, percentage: 20 },
-        presentations: { count: 15, size: 12000000, percentage: 16 },
-        pdfs: { count: 20, size: 18000000, percentage: 22 },
-        images: { count: 12, size: 9000000, percentage: 13 },
-        others: { count: 7, size: 3000000, percentage: 7 }
-      },
-      risks: {
-        pii: { count: 10, size: 3000000, percentage: 30 },
-        financial: { count: 8, size: 2500000, percentage: 25 },
-        legal: { count: 8, size: 2000000, percentage: 25 },
-        confidential: { count: 6, size: 1500000, percentage: 20 }
+      lessThanOneYear: {
+        types: {
+          documents: { count: 20, size: 8000000, percentage: 22 },
+          spreadsheets: { count: 18, size: 5000000, percentage: 20 },
+          presentations: { count: 15, size: 12000000, percentage: 16 },
+          pdfs: { count: 20, size: 18000000, percentage: 22 },
+          images: { count: 12, size: 9000000, percentage: 13 },
+          others: { count: 7, size: 3000000, percentage: 7 }
+        },
+        risks: {
+          pii: { count: 10, size: 3000000, percentage: 30 },
+          financial: { count: 8, size: 2500000, percentage: 25 },
+          legal: { count: 8, size: 2000000, percentage: 25 },
+          confidential: { count: 6, size: 1500000, percentage: 20 }
+        }
       }
     }
   });
@@ -81,6 +84,59 @@ function App() {
     }
   };
 
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    const stored = localStorage.getItem('isAuthenticated') === 'true';
+    console.log('Initial auth state from localStorage:', stored);
+    return stored;
+  });
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authError, setAuthError] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const handleGoogleSignIn = async () => {
+    console.log('Starting Google Sign In...');
+    try {
+      setAuthError(null);
+      const loginUrl = `${config.apiBaseUrl}/api/v1/auth/google/login`;
+      console.log('Making auth URL request to:', loginUrl);
+      console.log('Current config:', config);
+      
+      const response = await fetch(loginUrl, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+        }
+      });
+      
+      console.log('Auth URL response:', response);
+      console.log('Response status:', response.status);
+      console.log('Response headers:', [...response.headers.entries()]);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to get auth URL: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('Auth URL data:', data);
+      console.log('Full auth URL for redirect:', data.auth_url);
+      
+      if (data.auth_url) {
+        console.log('Redirecting to auth URL:', data.auth_url);
+        // Force clear auth state before redirect
+        setIsAuthenticated(false);
+        localStorage.removeItem('isAuthenticated');
+        window.location.href = data.auth_url;
+      } else {
+        throw new Error('No auth URL received');
+      }
+    } catch (error) {
+      console.error('Error in handleGoogleSignIn:', error);
+      setAuthError('Failed to initiate authentication. Please try again.');
+    }
+  };
+
+  // MV TBD compare 
   const handleStatsUpdate = (newStats) => {
     console.log('Received new stats:', newStats);
     
@@ -240,6 +296,7 @@ function App() {
     );
   };
 
+  /* MV Original
   const renderAgeSection = (data, title) => {
     if (!data) return null;
 
@@ -247,7 +304,7 @@ function App() {
       <div className="age-section">
         <h3>{title}</h3>
         
-        {/* Types Section */}
+        {/* Types Section *}
         <div className="section-content">
           <h4>File Types</h4>
           <div className="type-bars">
@@ -274,7 +331,7 @@ function App() {
           </div>
         </div>
 
-        {/* Risks Section */}
+        {/* Risks Section *}
         <div className="section-content">
           <h4>Risks</h4>
           <div className="risk-bars">
@@ -302,16 +359,132 @@ function App() {
         </div>
       </div>
     );
+  };*/
+
+  const renderAgeSection = (data, title) => {    
+    if (!data) {
+      console.log('No data provided to renderAgeSection');
+      return null;
+    }
+
+    // Calculate total PII items in this age category
+    const totalPiiCount = Object.values(data.risks || {}).reduce((sum, risk) => 
+      sum + (risk.count || 0), 0
+    );
+
+    // Calculate percentages for PII items
+    const piiData = { ...data.risks };
+    if (totalPiiCount > 0) {
+      Object.keys(piiData).forEach(type => {
+        if (piiData[type]) {
+          piiData[type].percentage = Math.round((piiData[type].count / totalPiiCount) * 100);
+        }
+      });
+    }
+
+    // Colors for different PII types
+    const piiColors = {
+      //pii (red #FF6B6B)
+      pii: '#FF6B6B',      // Coral Red
+      email: '#FF6B6B',    // Coral Red
+
+      //financial (mint #A8E6CF)
+      financial: '#A8E6CF',    // Mint
+      credit_card: '#A8E6CF',  // Mint
+      
+      //confidential (orange #FF9F43)
+      confidential: '#FF9F43',  // Orange
+      ip_address: '#FF9F43',    // Orange
+      
+      //legal (blue #4834D4)
+      legal: '#4834D4',    // Blue
+      ssn: '#4834D4',      // Blue
+      phone: '#4834D4',    // Blue
+    };
+
+    return (
+      <div className="age-section">
+        <h3>{title}</h3>
+        <div className="age-section-content">
+          {/* Types Section */}
+          <div className="section-content">
+            <h4>File Types</h4>
+            <div className="type-bars">
+              {Object.entries(data.types || {}).map(([type, stats]) => {
+                return (
+                  <div key={type} className="type-bar">
+                    <span className="type-label">{type.charAt(0).toUpperCase() + type.slice(1)}</span>
+                    <div className="bar-container">
+                      <div 
+                        className="bar" 
+                        style={{ 
+                          width: `${stats.percentage}%`,
+                          backgroundColor: fileTypeColors[type],
+                          opacity: 0.85
+                        }}
+                      ></div>
+                    </div>
+                    <div className="type-stats">
+                      <span className="type-count">{stats.count || 0} files</span>
+                      <span className="type-size">{formatBytes(stats.size || 0)}</span>
+                      <span className="type-percentage">{stats.percentage || 0}%</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* PII Section */}
+          <div className="section-content">
+            <h4>Risk {totalPiiCount > 0 && 
+              <span className="pii-total">({totalPiiCount} items found)</span>
+            }</h4>
+            <div className="type-bars">
+              {Object.entries(piiData || {}).map(([type, info]) => {
+                if (info && info.count > 0) {
+                  return (
+                    <div key={type} className="type-bar">
+                      <span className="type-label">
+                        {type.replace(/_/g, ' ').toUpperCase()}
+                      </span>
+                      <div className="bar-container">
+                        <div 
+                          className="bar" 
+                          style={{ 
+                            width: `${info.percentage}%`,
+                            backgroundColor: piiColors[type] || '#6C5CE7',
+                            opacity: 0.85
+                          }}
+                        ></div>
+                      </div>
+                      <div className="type-stats">
+                        <span className="type-count">{info.count} found</span>
+                        <span className={`pii-badge ${info.confidence >= 0.9 ? 'high' : 'medium'}`}>
+                          {Math.round((info.confidence || 0) * 100)}%
+                        </span>
+                        <span className="type-percentage">{info.percentage}%</span>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              }).filter(Boolean)}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const renderTabContent = () => {
     switch (activeTab) {
       case 'moreThanThreeYears':
-        return renderAgeSection(stats.ageDistribution.moreThanThreeYears, 'Files > 3 years old');
+        return renderAgeSection(stats.ageDistribution?.moreThanThreeYears, 'Files > 3 years old');
       case 'oneToThreeYears':
-        return renderAgeSection(stats.ageDistribution.oneToThreeYears, 'Files 1-3 years old');
+        return renderAgeSection(stats.ageDistribution?.oneToThreeYears, 'Files 1-3 years old');
       case 'lessThanOneYear':
-        return renderAgeSection(stats.ageDistribution.lessThanOneYear, 'Files < 1 year old');
+        return renderAgeSection(stats.ageDistribution?.lessThanOneYear, 'Files < 1 year old');
       case 'type':
         return renderFileTypeContent();
       case 'owner':

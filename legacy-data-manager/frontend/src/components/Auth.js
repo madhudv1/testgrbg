@@ -7,7 +7,7 @@ const Auth = ({ onAuthSuccess }) => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const response = await axios.get(`${config.apiBaseUrl}/api/v1/drive/auth/status`);
+        const response = await axios.get(`${config.apiBaseUrl}/api/v1/auth/google/status`);
         if (response.data.authenticated) {
           onAuthSuccess();
         }
@@ -20,7 +20,7 @@ const Auth = ({ onAuthSuccess }) => {
 
   const handleAuth = async () => {
     try {
-      const response = await axios.get(`${config.apiBaseUrl}/api/v1/drive/auth/url`);
+      const response = await axios.get(`${config.apiBaseUrl}/api/v1/auth/google/login`);
       window.location.href = response.data.auth_url;
     } catch (error) {
       console.error('Error getting auth URL:', error);
@@ -43,4 +43,24 @@ const Auth = ({ onAuthSuccess }) => {
   );
 };
 
-export default Auth; 
+export default Auth;
+
+export const checkAuthStatus = async () => {
+    try {
+        const response = await axios.get(`${config.apiBaseUrl}/api/v1/auth/google/status`);
+        return response.data;
+    } catch (error) {
+        console.error('Error checking auth status:', error);
+        return { isAuthenticated: false };
+    }
+};
+
+export const getAuthUrl = async () => {
+    try {
+        const response = await axios.get(`${config.apiBaseUrl}/api/v1/auth/google/login`);
+        return response.data.auth_url;
+    } catch (error) {
+        console.error('Error getting auth URL:', error);
+        throw error;
+    }
+}; 

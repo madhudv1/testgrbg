@@ -35,6 +35,14 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
   
   const location = useLocation();
 
+  console.log('Klio component state:', {
+    isConnected,
+    isLoading,
+    showDirectorySelection,
+    showAnalysisOptions,
+    selectedDirectory
+  });
+
   useEffect(() => {
     // Check for auth error in URL params
     const urlParams = new URLSearchParams(window.location.search);
@@ -59,70 +67,95 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
       fetchDirectories();
     }
     
-    // Check connection status
-    handleCheckConnection();
+    // Check connection status on mount
+    console.log('Klio component mounted, checking connection...');
+    const initializeConnection = async () => {
+      try {
+        const response = await fetch(`${config.apiBaseUrl}/api/v1/auth/google/status`, {
+          credentials: 'include'
+        });
+        console.log('Initial connection check response:', response);
+        const data = await response.json();
+        console.log('Initial connection check data:', data);
+        
+        if (data.isAuthenticated) {
+          console.log('User is authenticated, setting connected state');
+          setIsConnected(true);
+          await fetchDirectories();
+        } else {
+          console.log('User is not authenticated, showing connect button');
+          setIsConnected(false);
+        }
+      } catch (error) {
+        console.error('Error during initial connection check:', error);
+        setIsConnected(false);
+      }
+    };
+
+    initializeConnection();
   }, [location]);
 
   const handleCheckConnection = async () => {
+    console.log('Checking connection status...');
     try {
-      const response = await fetch(`${config.apiBaseUrl}/api/v1/drive/auth/status`);
+      const response = await fetch(`${config.apiBaseUrl}/api/v1/auth/google/status`, {
+        credentials: 'include'
+      });
+      console.log('Connection check response:', response);
       const data = await response.json();
+      console.log('Connection check data:', data);
       
-      if (!response.ok) {
-        setIsConnected(false);
-        if (response.status === 401) {
-          setError("Google Drive session expired. Please reconnect.");
-          setMessages(prev => [...prev, {
-            type: 'assistant',
-            content: 'Your Google Drive session has expired. Please connect again.'
-          }]);
-        } else {
-          setError(`Connection error: ${data.detail || 'Unknown error'}`);
-        }
-        return false;
+      const connected = data.isAuthenticated === true;
+      console.log('Setting connection state to:', connected);
+      setIsConnected(connected);
+      
+      if (connected) {
+        console.log('Connected, fetching directories...');
+        await fetchDirectories();
       }
-      
-      setIsConnected(data.authenticated);
-      setError(null);
-      return data.authenticated;
     } catch (error) {
       console.error('Error checking connection:', error);
       setIsConnected(false);
-      setError("Failed to check Google Drive connection status");
-      return false;
     }
   };
 
   const handleConnect = async () => {
+    console.log('Initiating connection...');
     try {
-      setError(null);
-      const response = await fetch(`${config.apiBaseUrl}/api/v1/drive/auth/url`);
+      const response = await fetch(`${config.apiBaseUrl}/api/v1/auth/google/login`, {
+        credentials: 'include'
+      });
+      console.log('Connect response:', response);
       const data = await response.json();
+      console.log('Connect data:', data);
       
-      if (!response.ok) {
-        throw new Error(data.detail || 'Failed to get authentication URL');
+      if (data.auth_url) {
+        console.log('Redirecting to auth URL:', data.auth_url);
+        window.location.href = data.auth_url;
       }
-      
-      // Store current URL to handle redirect back after auth
-      localStorage.setItem('klio_redirect', window.location.href);
-      window.location.href = data.auth_url;
     } catch (error) {
-      console.error('Failed to get auth URL:', error);
-      setError(error.message);
-      setMessages(prev => [...prev, {
-        type: 'assistant',
-        content: `Sorry, I encountered an error while trying to connect to Google Drive: ${error.message}`
-      }]);
+      console.error('Error connecting:', error);
     }
   };
 
   const fetchDirectories = async () => {
+    console.log('Fetching directories...');
     try {
       setIsLoading(true);
-      const response = await fetch(`${config.apiBaseUrl}/api/v1/drive/directories`);
+      const response = await fetch(`${config.apiBaseUrl}/api/v1/drive/directories`, {
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+      
+      console.log('Directories response:', response);
+      console.log('Response status:', response.status);
       
       if (!response.ok) {
+        console.error('Failed to fetch directories:', response.status);
         if (response.status === 401) {
+          console.log('Unauthorized, setting connected to false');
           setIsConnected(false);
           setMessages(prev => [...prev, {
             type: 'assistant',
@@ -130,19 +163,23 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
           }]);
           return;
         }
-        throw new Error('Failed to fetch directories');
+        throw new Error(`Failed to fetch directories: ${response.status}`);
       }
       
-      const data = await response.json();
-      setDirectories(data.directories || []);
+      const directories = await response.json();
+      console.log('Directories data:', directories);
       
-      if (data.directories && data.directories.length > 0) {
-        const directoryList = data.directories.map(dir => `• ${dir.name}`).join('\n');
+      if (Array.isArray(directories) && directories.length > 0) {
+        console.log('Found directories:', directories);
+        setDirectories(directories);
+        const directoryList = directories.map(dir => `• ${dir.name}`).join('\n');
         setMessages(prev => [...prev, {
           type: 'assistant',
           content: `Here are your available directories:\n\n${directoryList}`
         }]);
       } else {
+        console.log('No directories found in response');
+        setDirectories([]);
         setMessages(prev => [...prev, {
           type: 'assistant',
           content: 'I couldn\'t find any directories in your Google Drive.'
@@ -152,7 +189,7 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
       console.error('Error fetching directories:', error);
       setMessages(prev => [...prev, {
         type: 'assistant',
-        content: 'Sorry, I encountered an error while trying to list directories.'
+        content: `Sorry, I encountered an error while trying to list directories: ${error.message}`
       }]);
     } finally {
       setIsLoading(false);
@@ -164,15 +201,22 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
     
     try {
       setIsLoading(true);
+      console.log('Starting analysis for directory:', directory);
+      
       const response = await fetch(`${config.apiBaseUrl}/api/v1/drive/directories/${directory.id}/analyze`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-        }
+        },
+        credentials: 'include'
       });
+
+      console.log('Analysis response:', response);
+      console.log('Response status:', response.status);
 
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('Analysis failed:', errorData);
         if (response.status === 401 || response.status === 403) {
           setMessages(prev => [...prev, {
             type: 'assistant',
@@ -184,30 +228,25 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
       }
 
       const data = await response.json();
-      console.log('Raw analysis data:', data);
-
-      // Process the analysis data into stats
-      const stats = {
-        staleDocuments: data.staleCount || 0,
-        duplicateDocuments: data.duplicateCount || 0,
-        sensitiveDocuments: data.sensitiveCount || 0,
-        ageDistribution: {
-          lessThanOneYear: data.ageDistribution?.lessThanOneYear || 0,
-          oneToThreeYears: data.ageDistribution?.oneToThreeYears || 0,
-          moreThanThreeYears: data.ageDistribution?.moreThanThreeYears || 0
+      console.log('Analysis data received:', data);
+      console.log('Detailed analysis data structure:', {
+        moreThanThreeYears: {
+          types: data.moreThanThreeYears?.types,
+          risks: data.moreThanThreeYears?.risks
         },
-        fileTypes: {
-          documents: { count: data.fileTypes?.documents?.count || 0, size: data.fileTypes?.documents?.size || 0 },
-          spreadsheets: { count: data.fileTypes?.spreadsheets?.count || 0, size: data.fileTypes?.spreadsheets?.size || 0 },
-          images: { count: data.fileTypes?.images?.count || 0, size: data.fileTypes?.images?.size || 0 },
-          presentations: { count: data.fileTypes?.presentations?.count || 0, size: data.fileTypes?.presentations?.size || 0 },
-          pdfs: { count: data.fileTypes?.pdfs?.count || 0, size: data.fileTypes?.pdfs?.size || 0 },
-          others: { count: data.fileTypes?.others?.count || 0, size: data.fileTypes?.others?.size || 0 }
+        oneToThreeYears: {
+          types: data.oneToThreeYears?.types,
+          risks: data.oneToThreeYears?.risks
+        },
+        lessThanOneYear: {
+          types: data.lessThanOneYear?.types,
+          risks: data.lessThanOneYear?.risks
         }
-      };
+      });
 
-      console.log('Processed stats:', stats);
-      onStatsUpdate(stats);
+      // Pass the data to the parent component
+      console.log('Sending analysis data to parent component');
+      onStatsUpdate(data);
 
       // Reset UI state after successful analysis
       setShowAnalysisOptions(false);
@@ -216,13 +255,13 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
 
       setMessages(prev => [...prev, {
         type: 'assistant',
-        content: 'Analysis complete. Check the dashboard for detailed insights.'
+        content: `Analysis complete for "${directory.name}". Check the dashboard for detailed insights.`
       }]);
     } catch (error) {
       console.error('Analysis error:', error);
       setMessages(prev => [...prev, {
         type: 'assistant',
-        content: `Sorry, I encountered an error: ${error.message}`
+        content: `Sorry, I encountered an error during analysis: ${error.message}`
       }]);
     } finally {
       setIsLoading(false);
@@ -273,7 +312,8 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
   const handleDirectorySelect = (directory) => {
     setSelectedDirectory(directory);
     setShowDirectorySelection(false);
-    setShowAnalysisOptions(true);
+    handleAnalyze(selectedDirectory);
+    //setShowAnalysisOptions(true);
   };
 
   const handleMessageSubmit = (e) => {

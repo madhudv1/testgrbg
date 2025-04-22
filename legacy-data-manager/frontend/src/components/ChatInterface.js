@@ -204,6 +204,17 @@ const ChatInterface = () => {
     }, 100);
   };
 
+  const checkAuthStatus = async () => {
+    try {
+      const response = await fetch(`${config.apiBaseUrl}/api/v1/auth/google/status`, { credentials: 'include' });
+      const data = await response.json();
+      setIsAuthenticated(data.isAuthenticated);
+    } catch (error) {
+      console.error('Error checking auth status:', error);
+      setIsAuthenticated(false);
+    }
+  };
+
   console.log('ChatInterface render - isAuthenticated:', isAuthenticated, 'authError:', authError);
 
   if (!isAuthenticated || authError) {
