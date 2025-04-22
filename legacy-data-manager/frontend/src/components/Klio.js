@@ -312,7 +312,8 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
   const handleDirectorySelect = (directory) => {
     setSelectedDirectory(directory);
     setShowDirectorySelection(false);
-    setShowAnalysisOptions(true);
+    handleAnalyze(selectedDirectory);
+    //setShowAnalysisOptions(true);
   };
 
   const handleMessageSubmit = (e) => {

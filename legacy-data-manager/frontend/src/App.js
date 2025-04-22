@@ -15,53 +15,55 @@ function App() {
     staleDocuments: 0,
     duplicateDocuments: 0,
     sensitiveDocuments: 0,
-    // Dummy data for development
-    moreThanThreeYears: {
-      types: {
-        documents: { count: 45, size: 15000000, percentage: 30 },
-        spreadsheets: { count: 30, size: 8000000, percentage: 20 },
-        presentations: { count: 15, size: 20000000, percentage: 10 },
-        pdfs: { count: 30, size: 25000000, percentage: 20 },
-        images: { count: 15, size: 12000000, percentage: 10 },
-        others: { count: 15, size: 5000000, percentage: 10 }
+    ageDistribution: {
+      // Dummy data for development
+      moreThanThreeYears: {
+        types: {
+          documents: { count: 45, size: 15000000, percentage: 30 },
+          spreadsheets: { count: 30, size: 8000000, percentage: 20 },
+          presentations: { count: 15, size: 20000000, percentage: 10 },
+          pdfs: { count: 30, size: 25000000, percentage: 20 },
+          images: { count: 15, size: 12000000, percentage: 10 },
+          others: { count: 15, size: 5000000, percentage: 10 }
+        },
+        risks: {
+          pii: { count: 20, size: 5000000, percentage: 40 },
+          financial: { count: 15, size: 4000000, percentage: 30 },
+          legal: { count: 10, size: 3000000, percentage: 20 },
+          confidential: { count: 5, size: 1000000, percentage: 10 }
+        }
       },
-      risks: {
-        pii: { count: 20, size: 5000000, percentage: 40 },
-        financial: { count: 15, size: 4000000, percentage: 30 },
-        legal: { count: 10, size: 3000000, percentage: 20 },
-        confidential: { count: 5, size: 1000000, percentage: 10 }
-      }
-    },
-    oneToThreeYears: {
-      types: {
-        documents: { count: 30, size: 10000000, percentage: 25 },
-        spreadsheets: { count: 25, size: 6000000, percentage: 20 },
-        presentations: { count: 20, size: 15000000, percentage: 15 },
-        pdfs: { count: 25, size: 20000000, percentage: 20 },
-        images: { count: 15, size: 10000000, percentage: 12 },
-        others: { count: 10, size: 4000000, percentage: 8 }
+      oneToThreeYears: {
+        types: {
+          documents: { count: 30, size: 10000000, percentage: 25 },
+          spreadsheets: { count: 25, size: 6000000, percentage: 20 },
+          presentations: { count: 20, size: 15000000, percentage: 15 },
+          pdfs: { count: 25, size: 20000000, percentage: 20 },
+          images: { count: 15, size: 10000000, percentage: 12 },
+          others: { count: 10, size: 4000000, percentage: 8 }
+        },
+        risks: {
+          pii: { count: 15, size: 4000000, percentage: 35 },
+          financial: { count: 12, size: 3000000, percentage: 28 },
+          legal: { count: 10, size: 2500000, percentage: 23 },
+          confidential: { count: 6, size: 1500000, percentage: 14 }
+        }
       },
-      risks: {
-        pii: { count: 15, size: 4000000, percentage: 35 },
-        financial: { count: 12, size: 3000000, percentage: 28 },
-        legal: { count: 10, size: 2500000, percentage: 23 },
-        confidential: { count: 6, size: 1500000, percentage: 14 }
-      }
-    },
-    lessThanOneYear: {
-      types: {
-        documents: { count: 20, size: 8000000, percentage: 22 },
-        spreadsheets: { count: 18, size: 5000000, percentage: 20 },
-        presentations: { count: 15, size: 12000000, percentage: 16 },
-        pdfs: { count: 20, size: 18000000, percentage: 22 },
-        images: { count: 12, size: 9000000, percentage: 13 },
-        others: { count: 7, size: 3000000, percentage: 7 }
-      },
-      risks: {
-        pii: { count: 10, size: 3000000, percentage: 30 },
-        financial: { count: 8, size: 2500000, percentage: 25 },
-        legal: { count: 8, size: 2000000, percentage: 25 },
-        confidential: { count: 6, size: 1500000, percentage: 20 }
+      lessThanOneYear: {
+        types: {
+          documents: { count: 20, size: 8000000, percentage: 22 },
+          spreadsheets: { count: 18, size: 5000000, percentage: 20 },
+          presentations: { count: 15, size: 12000000, percentage: 16 },
+          pdfs: { count: 20, size: 18000000, percentage: 22 },
+          images: { count: 12, size: 9000000, percentage: 13 },
+          others: { count: 7, size: 3000000, percentage: 7 }
+        },
+        risks: {
+          pii: { count: 10, size: 3000000, percentage: 30 },
+          financial: { count: 8, size: 2500000, percentage: 25 },
+          legal: { count: 8, size: 2000000, percentage: 25 },
+          confidential: { count: 6, size: 1500000, percentage: 20 }
+        }
       }
     }
   });
@@ -478,11 +480,11 @@ function App() {
   const renderTabContent = () => {
     switch (activeTab) {
       case 'moreThanThreeYears':
-        return renderAgeSection(stats[activeTab], 'Files > 3 years old');
+        return renderAgeSection(stats.ageDistribution?.moreThanThreeYears, 'Files > 3 years old');
       case 'oneToThreeYears':
-        return renderAgeSection(stats[activeTab], 'Files 1-3 years old');
+        return renderAgeSection(stats.ageDistribution?.oneToThreeYears, 'Files 1-3 years old');
       case 'lessThanOneYear':
-        return renderAgeSection(stats[activeTab], 'Files < 1 year old');
+        return renderAgeSection(stats.ageDistribution?.lessThanOneYear, 'Files < 1 year old');
       case 'type':
         return renderFileTypeContent();
       case 'owner':
