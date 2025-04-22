@@ -5,10 +5,11 @@ import DirectoryList from './components/DirectoryList';
 import DirectoryExplorer from './components/DirectoryExplorer';
 import Klio from './components/Klio';
 import './App.css';
+import config from './config';
 
 function App() {
   const [selectedDirectory, setSelectedDirectory] = useState(null);
-  const [activeTab, setActiveTab] = useState('age');
+  const [activeTab, setActiveTab] = useState('moreThanThreeYears');
   const [typeSort, setTypeSort] = useState('count'); // 'count' or 'size'
   const [stats, setStats] = useState({
     staleDocuments: 0,
@@ -81,6 +82,59 @@ function App() {
     }
   };
 
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    const stored = localStorage.getItem('isAuthenticated') === 'true';
+    console.log('Initial auth state from localStorage:', stored);
+    return stored;
+  });
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authError, setAuthError] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const handleGoogleSignIn = async () => {
+    console.log('Starting Google Sign In...');
+    try {
+      setAuthError(null);
+      const loginUrl = `${config.apiBaseUrl}/api/v1/auth/google/login`;
+      console.log('Making auth URL request to:', loginUrl);
+      console.log('Current config:', config);
+      
+      const response = await fetch(loginUrl, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+        }
+      });
+      
+      console.log('Auth URL response:', response);
+      console.log('Response status:', response.status);
+      console.log('Response headers:', [...response.headers.entries()]);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to get auth URL: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('Auth URL data:', data);
+      console.log('Full auth URL for redirect:', data.auth_url);
+      
+      if (data.auth_url) {
+        console.log('Redirecting to auth URL:', data.auth_url);
+        // Force clear auth state before redirect
+        setIsAuthenticated(false);
+        localStorage.removeItem('isAuthenticated');
+        window.location.href = data.auth_url;
+      } else {
+        throw new Error('No auth URL received');
+      }
+    } catch (error) {
+      console.error('Error in handleGoogleSignIn:', error);
+      setAuthError('Failed to initiate authentication. Please try again.');
+    }
+  };
+
+  // MV TBD compare 
   const handleStatsUpdate = (newStats) => {
     console.log('Received new stats:', newStats);
     
@@ -240,6 +294,7 @@ function App() {
     );
   };
 
+  /* MV Original
   const renderAgeSection = (data, title) => {
     if (!data) return null;
 
@@ -247,7 +302,7 @@ function App() {
       <div className="age-section">
         <h3>{title}</h3>
         
-        {/* Types Section */}
+        {/* Types Section *}
         <div className="section-content">
           <h4>File Types</h4>
           <div className="type-bars">
@@ -274,7 +329,7 @@ function App() {
           </div>
         </div>
 
-        {/* Risks Section */}
+        {/* Risks Section *}
         <div className="section-content">
           <h4>Risks</h4>
           <div className="risk-bars">
@@ -302,16 +357,132 @@ function App() {
         </div>
       </div>
     );
+  };*/
+
+  const renderAgeSection = (data, title) => {    
+    if (!data) {
+      console.log('No data provided to renderAgeSection');
+      return null;
+    }
+
+    // Calculate total PII items in this age category
+    const totalPiiCount = Object.values(data.risks || {}).reduce((sum, risk) => 
+      sum + (risk.count || 0), 0
+    );
+
+    // Calculate percentages for PII items
+    const piiData = { ...data.risks };
+    if (totalPiiCount > 0) {
+      Object.keys(piiData).forEach(type => {
+        if (piiData[type]) {
+          piiData[type].percentage = Math.round((piiData[type].count / totalPiiCount) * 100);
+        }
+      });
+    }
+
+    // Colors for different PII types
+    const piiColors = {
+      //pii (red #FF6B6B)
+      pii: '#FF6B6B',      // Coral Red
+      email: '#FF6B6B',    // Coral Red
+
+      //financial (mint #A8E6CF)
+      financial: '#A8E6CF',    // Mint
+      credit_card: '#A8E6CF',  // Mint
+      
+      //confidential (orange #FF9F43)
+      confidential: '#FF9F43',  // Orange
+      ip_address: '#FF9F43',    // Orange
+      
+      //legal (blue #4834D4)
+      legal: '#4834D4',    // Blue
+      ssn: '#4834D4',      // Blue
+      phone: '#4834D4',    // Blue
+    };
+
+    return (
+      <div className="age-section">
+        <h3>{title}</h3>
+        <div className="age-section-content">
+          {/* Types Section */}
+          <div className="section-content">
+            <h4>File Types</h4>
+            <div className="type-bars">
+              {Object.entries(data.types || {}).map(([type, stats]) => {
+                return (
+                  <div key={type} className="type-bar">
+                    <span className="type-label">{type.charAt(0).toUpperCase() + type.slice(1)}</span>
+                    <div className="bar-container">
+                      <div 
+                        className="bar" 
+                        style={{ 
+                          width: `${stats.percentage}%`,
+                          backgroundColor: fileTypeColors[type],
+                          opacity: 0.85
+                        }}
+                      ></div>
+                    </div>
+                    <div className="type-stats">
+                      <span className="type-count">{stats.count || 0} files</span>
+                      <span className="type-size">{formatBytes(stats.size || 0)}</span>
+                      <span className="type-percentage">{stats.percentage || 0}%</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* PII Section */}
+          <div className="section-content">
+            <h4>Risk {totalPiiCount > 0 && 
+              <span className="pii-total">({totalPiiCount} items found)</span>
+            }</h4>
+            <div className="type-bars">
+              {Object.entries(piiData || {}).map(([type, info]) => {
+                if (info && info.count > 0) {
+                  return (
+                    <div key={type} className="type-bar">
+                      <span className="type-label">
+                        {type.replace(/_/g, ' ').toUpperCase()}
+                      </span>
+                      <div className="bar-container">
+                        <div 
+                          className="bar" 
+                          style={{ 
+                            width: `${info.percentage}%`,
+                            backgroundColor: piiColors[type] || '#6C5CE7',
+                            opacity: 0.85
+                          }}
+                        ></div>
+                      </div>
+                      <div className="type-stats">
+                        <span className="type-count">{info.count} found</span>
+                        <span className={`pii-badge ${info.confidence >= 0.9 ? 'high' : 'medium'}`}>
+                          {Math.round((info.confidence || 0) * 100)}%
+                        </span>
+                        <span className="type-percentage">{info.percentage}%</span>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              }).filter(Boolean)}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const renderTabContent = () => {
     switch (activeTab) {
       case 'moreThanThreeYears':
-        return renderAgeSection(stats.ageDistribution.moreThanThreeYears, 'Files > 3 years old');
+        return renderAgeSection(stats[activeTab], 'Files > 3 years old');
       case 'oneToThreeYears':
-        return renderAgeSection(stats.ageDistribution.oneToThreeYears, 'Files 1-3 years old');
+        return renderAgeSection(stats[activeTab], 'Files 1-3 years old');
       case 'lessThanOneYear':
-        return renderAgeSection(stats.ageDistribution.lessThanOneYear, 'Files < 1 year old');
+        return renderAgeSection(stats[activeTab], 'Files < 1 year old');
       case 'type':
         return renderFileTypeContent();
       case 'owner':
