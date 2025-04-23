@@ -102,6 +102,11 @@ function App() {
   const handleStatsUpdate = (newStats) => {
     console.log('Received new stats in App.js:', newStats);
     
+    // Update selected directory if provided
+    if (newStats.directory) {
+      setSelectedDirectory(newStats.directory);
+    }
+    
     setStats(prevStats => {
       // Create updated stats object with the new structure
       const updatedStats = {
@@ -388,7 +393,7 @@ function App() {
 
     return (
       <div className="age-section">
-        <h3>{title}, {totalTypeCount}, {totalPiiCount}</h3>
+        <h3>{title}</h3>
         <div className="age-section-content">
           {/* Types Section */}
           <div className="section-content">
@@ -400,27 +405,31 @@ function App() {
                 const size = stats.size || 0;
                 const percentage = stats.percentage || 0;
 
-                return (
-                  <div key={type} className="type-bar">
-                    <span className="type-label">{type.charAt(0).toUpperCase() + type.slice(1)}</span>
-                    <div className="bar-container">
-                      <div 
-                        className="bar" 
-                        style={{ 
-                          width: `${percentage}%`,
-                          backgroundColor: fileTypeColors[type] || '#757575',
-                          opacity: 0.85
-                        }}
-                      ></div>
+                // Only render if there are files of this type
+                if (count > 0) {
+                  return (
+                    <div key={type} className="type-bar">
+                      <span className="type-label">{type.charAt(0).toUpperCase() + type.slice(1)}</span>
+                      <div className="bar-container">
+                        <div 
+                          className="bar" 
+                          style={{ 
+                            width: `${percentage}%`,
+                            backgroundColor: fileTypeColors[type] || '#757575',
+                            opacity: 0.85
+                          }}
+                        ></div>
+                      </div>
+                      <div className="type-stats">
+                        <span className="type-count">{count} files</span>
+                        <span className="type-size">{formatBytes(size)}</span>
+                        <span className="type-percentage">{percentage}%</span>
+                      </div>
                     </div>
-                    <div className="type-stats">
-                      <span className="type-count">{count} files</span>
-                      <span className="type-size">{formatBytes(size)}</span>
-                      <span className="type-percentage">{percentage}%</span>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                }
+                return null;
+              }).filter(Boolean)}
             </div>
           </div>
 
@@ -473,13 +482,9 @@ function App() {
       case 'oneToThreeYears':
         return renderAgeSection(stats.ageDistribution?.oneToThreeYears, 'Files 1-3 years old');
       case 'lessThanOneYear':
-        // Calculate total count for types to get percentages
-    const totalTypeCount = Object.values(stats.ageDistribution?.lessThanOneYear.types).reduce((sum, type) => sum + (type.count || 0), 0);
-    const totalRiskCount = Object.values(stats.ageDistribution?.lessThanOneYear.risks).reduce((sum, risk) => sum + (risk.count || 0), 0);
-  
-        return renderAgeSection(stats.ageDistribution?.lessThanOneYear, 'Files < 1 year old ( files '+ totalTypeCount + ',  risks  ' + totalRiskCount + ' )');
-      case 'type':
-        return renderFileTypeContent();
+        return renderAgeSection(stats.ageDistribution?.lessThanOneYear, 'Files < 1 year old');
+      //case 'type':
+      //  return renderFileTypeContent();
       //case 'owner':
       //  return <div className="tab-content">Ownership analysis coming soon</div>;
       //case 'usage':
@@ -505,21 +510,14 @@ function App() {
               <div className="app-content">
                 <div className="dashboard-section">
                   <div className="document-overview">
-                    <h2>Document overview</h2>
+                    <h2>Scanning {selectedDirectory ? `: ${selectedDirectory.name}` : ''}</h2>
                     <div className="stats-grid">
-                      <div className="stat-card" title="Documents that haven't been accessed in the last 6 months">
+                      <div className="stat-card" title="Total documents in this drive">
                         <div className="stat-number">
                           {stats.staleDocuments.toLocaleString()}
                           {stats.staleDocuments > 0 && <span className="trend-up">↑</span>}
                         </div>
-                        <div className="stat-label">Stale documents</div>
-                      </div>
-                      <div className="stat-card" title="Documents with similar content or identical names">
-                        <div className="stat-number">
-                          {stats.duplicateDocuments.toLocaleString()}
-                          {stats.duplicateDocuments > 0 && <span className="trend-up">↑</span>}
-                        </div>
-                        <div className="stat-label">Duplicate documents</div>
+                        <div className="stat-label">Files scanned</div>
                       </div>
                       <div className="stat-card" title="Documents that may contain sensitive information">
                         <div className="stat-number">
@@ -528,6 +526,14 @@ function App() {
                         </div>
                         <div className="stat-label">Sensitive documents</div>
                       </div>
+                      <div className="stat-card" title="Documents with similar content or identical names">
+                        <div className="stat-number">
+                          {stats.duplicateDocuments.toLocaleString()}
+                          {stats.duplicateDocuments > 0 && <span className="trend-up">↑</span>}
+                        </div>
+                        <div className="stat-label">Duplicate documents</div>
+                      </div>
+                      
                     </div>
 
                     <div className="age-distribution">

@@ -12,6 +12,8 @@ import json
 import uuid
 import asyncio
 from ....core.auth import get_current_user
+from app.services.rule_based_classifier import RuleBasedClassifier
+from asyncio import Lock, TimeoutError
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -24,6 +26,26 @@ genai_service = GenAIService()
 # Initialize services
 local_llm = LocalLLMService()
 rate_limiter = LLMRateLimiter()
+
+def determine_file_type(file: Dict) -> str:
+    """
+    Determine the type of file based on its MIME type.
+    Returns one of: "documents", "spreadsheets", "presentations", "pdfs", "images", "others"
+    """
+    mime_type = file.get('mimeType', '')
+    
+    if mime_type == 'application/pdf':
+        return 'pdfs'
+    elif mime_type.startswith('image/'):
+        return 'images'
+    elif mime_type in ['application/vnd.google-apps.document', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']:
+        return 'documents'
+    elif mime_type in ['application/vnd.google-apps.spreadsheet', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']:
+        return 'spreadsheets'
+    elif mime_type in ['application/vnd.google-apps.presentation', 'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation']:
+        return 'presentations'
+    else:
+        return 'others'
 
 def categorize_file_by_age(file: Dict) -> str:
     """
@@ -109,166 +131,234 @@ async def list_directory_files(folder_id: str, page_size: int = 100):
         logger.error(f"Error listing directory files: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+def initialize_response_structure():
+    return {
+        "moreThanThreeYears": {
+            "total_documents": 0,
+            "total_sensitive": 0,
+            "file_types": {
+                "documents": [],
+                "spreadsheets": [],
+                "presentations": [],
+                "pdfs": [],
+                "images": [],
+                "others": []
+            },
+            "sensitive_info": {
+                "pii": [],
+                "financial": [],
+                "legal": [],
+                "confidential": []
+            }
+        },
+        "oneToThreeYears": {
+            "total_documents": 0,
+            "total_sensitive": 0,
+            "file_types": {
+                "documents": [],
+                "spreadsheets": [],
+                "presentations": [],
+                "pdfs": [],
+                "images": [],
+                "others": []
+            },
+            "sensitive_info": {
+                "pii": [],
+                "financial": [],
+                "legal": [],
+                "confidential": []
+            }
+        },
+        "lessThanOneYear": {
+            "total_documents": 0,
+            "total_sensitive": 0,
+            "file_types": {
+                "documents": [],
+                "spreadsheets": [],
+                "presentations": [],
+                "pdfs": [],
+                "images": [],
+                "others": []
+            },
+            "sensitive_info": {
+                "pii": [],
+                "financial": [],
+                "legal": [],
+                "confidential": []
+            }
+        },
+        "scan_complete": False,
+        "processed_files": 0,
+        "total_files": 0,
+        "failed_files": []
+    }
+
+async def process_file(file: Dict, drive_service: GoogleDriveService, classifier: RuleBasedClassifier, response: Dict) -> None:
+    """Process a single file and update the response dictionary"""
+    try:
+        # First, categorize by age and type
+        age_category = categorize_file_by_age(file)
+        file_type = determine_file_type(file)
+        
+        # Update counts
+        response[age_category]["total_documents"] += 1
+        response[age_category]["file_types"][file_type].append({
+            "id": file.get("id"),
+            "name": file.get("name"),
+            "mimeType": file.get("mimeType"),
+            "modifiedTime": file.get("modifiedTime")
+        })
+        response["processed_files"] += 1
+        
+        # Only process content for specific file types
+        if file_type not in ["documents", "spreadsheets", "presentations", "pdfs", "images"]:
+            return
+
+        # Try to get content with timeout
+        content = None
+        try:
+            content = await asyncio.wait_for(
+                drive_service.get_file_content(file['id']),
+                timeout=10.0  # 10 second timeout for content retrieval
+            )
+        except (TimeoutError, Exception) as e:
+            logger.warning(f"Could not get content for file {file['name']}: {e}")
+            response["failed_files"].append({
+                "name": file["name"],
+                "error": str(e)
+            })
+            return
+
+        # Skip analysis if we couldn't get content
+        if content is None:
+            logger.warning(f"No content retrieved for file {file['name']}")
+            return
+
+        # Analyze with timeout
+        try:
+            analysis = await asyncio.wait_for(
+                classifier.analyze_document(file['name'], file['mimeType'], content),
+                timeout=5.0  # 5 second timeout for analysis
+            )
+            
+            # Clear content from memory
+            del content
+            
+        except (TimeoutError, Exception) as e:
+            logger.error(f"Error analyzing file {file['name']}: {e}")
+            response["failed_files"].append({
+                "name": file["name"],
+                "error": str(e)
+            })
+            return
+
+        # Process analysis results
+        if analysis and analysis.get('confidence_score', 0) > 0.7:
+            response[age_category]["total_sensitive"] += 1
+            sensitive_file = {
+                'file': {
+                    "id": file.get("id"),
+                    "name": file.get("name"),
+                    "mimeType": file.get("mimeType"),
+                    "modifiedTime": file.get("modifiedTime")
+                },
+                'confidence': analysis.get('confidence_score', 0),
+                'explanation': analysis.get('explanation', ''),
+                'categories': analysis.get('key_topics', []),
+                'queued_for_analysis': analysis.get('queued_for_analysis', False)
+            }
+            
+            category_mapping = {
+                'HR Documents': 'pii',
+                'Financial Documents': 'financial',
+                'Legal Documents': 'legal',
+                'Technical Documents': 'confidential'
+            }
+            
+            primary_category = analysis.get('primary_category', '')
+            if primary_category in category_mapping:
+                category = category_mapping[primary_category]
+                if category in response[age_category]["sensitive_info"]:
+                    response[age_category]["sensitive_info"][category].append(sensitive_file)
+
+    except Exception as e:
+        logger.error(f"Error processing file {file.get('name', 'unknown')}: {e}")
+        response["failed_files"].append({
+            "name": file.get("name", "unknown"),
+            "error": str(e)
+        })
+
+async def process_batch(files: List[Dict], drive_service: GoogleDriveService, 
+                       classifier: RuleBasedClassifier, response: Dict) -> None:
+    """Process a batch of files concurrently"""
+    tasks = []
+    for file in files:
+        task = asyncio.create_task(process_file(file, drive_service, classifier, response))
+        tasks.append(task)
+    await asyncio.gather(*tasks, return_exceptions=True)
+
 @router.post("/directories/{folder_id}/analyze")
 async def analyze_directory(
     folder_id: str,
-    recursive: bool = True,
-    drive_service: GoogleDriveService = Depends(get_current_user)
+    drive_service: GoogleDriveService = Depends(get_current_user),
 ):
-    """
-    Analyze a directory and its contents, optionally including subdirectories if recursive=True.
-    Returns statistics about file types and sensitive content organized by age categories.
-    """
     try:
-        # Initialize the local LLM service
-        local_llm = LocalLLMService()
+        response = initialize_response_structure()
+        classifier = RuleBasedClassifier()
         
-        # Get all files in the directory
-        files = await drive_service.list_directory(folder_id, recursive=recursive)
+        # Get files in directory
+        try:
+            files = await drive_service.list_directory(folder_id, recursive=True)
+        except Exception as e:
+            logger.error(f"Error listing directory: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error listing directory: {str(e)}"
+            )
+            
+        if not files:
+            return response
+            
+        # Set total files count
+        response["total_files"] = len(files)
         
-        # Initialize response structure
-        response = {
-            "moreThanThreeYears": {
-                "total_documents": 0,
-                "total_sensitive": 0,
-                "file_types": {
-                    "documents": [],
-                    "spreadsheets": [],
-                    "presentations": [],
-                    "pdfs": [],
-                    "images": [],
-                    "others": []
-                },
-                "sensitive_info": {
-                    "email": [],
-                    "ssn": [],
-                    "phone": [],
-                    "credit_card": [],
-                    "ip_address": []
-                }
-            },
-            "oneToThreeYears": {
-                "total_documents": 0,
-                "total_sensitive": 0,
-                "file_types": {
-                    "documents": [],
-                    "spreadsheets": [],
-                    "presentations": [],
-                    "pdfs": [],
-                    "images": [],
-                    "others": []
-                },
-                "sensitive_info": {
-                    "email": [],
-                    "ssn": [],
-                    "phone": [],
-                    "credit_card": [],
-                    "ip_address": []
-                }
-            },
-            "lessThanOneYear": {
-                "total_documents": 0,
-                "total_sensitive": 0,
-                "file_types": {
-                    "documents": [],
-                    "spreadsheets": [],
-                    "presentations": [],
-                    "pdfs": [],
-                    "images": [],
-                    "others": []
-                },
-                "sensitive_info": {
-                    "email": [],
-                    "ssn": [],
-                    "phone": [],
-                    "credit_card": [],
-                    "ip_address": []
-                }
-            },
-            "scan_complete": False
-        }
-        
-        # Process each file
-        for file in files:
-            # Categorize by age
-            age_category = categorize_file_by_age(file)
-            
-            # Increment total documents for this age category
-            response[age_category]["total_documents"] += 1
-            
-            # Categorize file type and add to appropriate list
-            file_type = categorize_file_type(file)
-            response[age_category]["file_types"][file_type].append(file)
-            
+        # Process files in smaller batches
+        batch_size = 2  # Reduced batch size
+        for i in range(0, len(files), batch_size):
+            batch = files[i:i + batch_size]
             try:
-                # Get file content and analyze with LLM
-                content = await drive_service.get_file_content(file['id'])
-                if content:
-                    analysis = await local_llm.analyze_text(content)
-                    if analysis.is_sensitive:
-                        # Increment sensitive document count
-                        response[age_category]["total_sensitive"] += 1
-                        
-                        # Add file to appropriate sensitive categories
-                        sensitive_file = {
-                            'file': file,
-                            'confidence': analysis.confidence,
-                            'explanation': analysis.explanation,
-                            'categories': analysis.categories  # List of detected sensitive categories
-                        }
-                        
-                        # Add to each detected sensitive category
-                        for category in analysis.categories:
-                            if category in response[age_category]["sensitive_info"]:
-                                response[age_category]["sensitive_info"][category].append(sensitive_file)
-                            
+                await asyncio.wait_for(
+                    process_batch(batch, drive_service, classifier, response),
+                    timeout=20.0  # Reduced timeout per batch
+                )
+            except TimeoutError:
+                logger.error(f"Timeout processing batch starting at index {i}")
+                for file in batch:
+                    response["failed_files"].append({
+                        "name": file.get("name", "unknown"),
+                        "error": "Batch processing timeout"
+                    })
             except Exception as e:
-                logger.error(f"Error analyzing file {file['name']}: {e}")
-                continue
+                logger.error(f"Error processing batch starting at index {i}: {e}")
+                for file in batch:
+                    response["failed_files"].append({
+                        "name": file.get("name", "unknown"),
+                        "error": str(e)
+                    })
+            
+            # Force garbage collection after each batch
+            import gc
+            gc.collect()
         
         response["scan_complete"] = True
         return response
         
-    except ValueError as e:
-        logger.error(f"Value error in analyze_directory: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-    except asyncio.TimeoutError:
-        logger.error("Timeout analyzing directory")
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail="Operation timed out"
-        )
     except Exception as e:
-        logger.error(f"Error analyzing directory: {e}", exc_info=True)
+        logger.error(f"Error analyzing directory: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
+            status_code=500,
+            detail=f"Error analyzing directory: {str(e)}"
         )
-
-def categorize_file_type(file: Dict) -> str:
-    """
-    Categorize a file based on its MIME type or extension.
-    Returns one of: documents, spreadsheets, presentations, pdfs, images, others
-    """
-    mime_type = file.get('mimeType', '').lower()
-    name = file.get('name', '').lower()
-    
-    if 'document' in mime_type or name.endswith(('.doc', '.docx')):
-        return "documents"
-    elif 'spreadsheet' in mime_type or name.endswith(('.xls', '.xlsx', '.csv')):
-        return "spreadsheets"
-    elif 'presentation' in mime_type or name.endswith(('.ppt', '.pptx')):
-        return "presentations"
-    elif 'pdf' in mime_type or name.endswith('.pdf'):
-        return "pdfs"
-    elif ('image' in mime_type or 
-          any(name.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp'])):
-        return "images"
-    else:
-        return "others"
 
 @router.get("/directories/{folder_id}/categorize")
 async def categorize_directory(folder_id: str, page_size: int = 100):

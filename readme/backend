@@ -6,6 +6,10 @@
     uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --log-level debug
     uvicorn app.main:app --reload
 
+# kill the server
+    kill -9 $(lsof -t -i:8000)
+    lsof -i :8000 | grep LISTEN | awk '{print $2}' | xargs kill -9
+
 #FastAPI LegacyData
     http://localhost:8000/docs
 

@@ -70,12 +70,8 @@ class GoogleDriveService:
 
     async def is_authenticated(self):
         """Check if we have valid credentials."""
-        logger.debug("********** 1 *******")
-        logger.debug("Starting is_authenticated check")
         try:
             credentials = self.load_credentials()
-            logger.debug("********** 2 *******")
-            logger.debug(f"Loaded credentials: {credentials is not None}")
             
             if not credentials:
                 logger.debug("No credentials found")
@@ -215,7 +211,6 @@ class GoogleDriveService:
             )
             flow.redirect_uri = settings.GOOGLE_REDIRECT_URI
             
-            # Ensure we request offline access and refresh token
             auth_url, _ = flow.authorization_url(
                 access_type='offline',
                 prompt='consent',
@@ -347,16 +342,12 @@ class GoogleDriveService:
             logger.error(f"Error in recursive directory listing for folder {folder_id}: {e}")
             raise
 
-    async def get_file_content(self, file_id: str) -> str:
-        """Get the content of a file for analysis."""
-        if not self.service:
-            self.build_service()
-        
+    async def get_file_content(self, file_id: str) -> Optional[str]:
+        """Get the content of a file from Google Drive."""
         try:
-            # Get file metadata to check mime type
-            file_metadata = self.get_file_metadata(file_id)
-            mime_type = file_metadata.get('mimeType', '')
-            timeout = 30  # 30 seconds timeout
+            # Get the file metadata first
+            file = await self.service.files().get(fileId=file_id, 
+                                                fields='mimeType').execute()
             
             # Handle Google Workspace files
             if mime_type.startswith('application/vnd.google-apps.'):
@@ -453,7 +444,7 @@ class GoogleDriveService:
                 except Exception as e:
                     logger.error(f"Error processing PDF file: {str(e)}")
                     return ""
-            
+                    
             elif mime_type.startswith('text/'):
                 try:
                     content = await asyncio.wait_for(
@@ -473,11 +464,11 @@ class GoogleDriveService:
             elif mime_type.startswith('image/'):
                 logger.info(f"Skipping image file {file_id} - OCR not yet implemented")
                 return ""
-            
+                
             else:
                 logger.warning(f"Unsupported mime type: {mime_type}")
                 return ""
-        
+                
         except Exception as e:
             logger.error(f"Error getting file content: {str(e)}")
             return ""

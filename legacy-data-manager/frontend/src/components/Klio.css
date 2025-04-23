@@ -38,30 +38,41 @@
 
 .command-buttons {
   display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
+  flex-direction: row;
+  gap: 0.25rem;  /* Reduced from 0.5rem */
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center; /* Added to center the buttons */
 }
 
 .command-button {
-  width: 100%;
-  padding: 0.75rem 1rem;
-  text-align: left;
+  padding: 0.5rem 1rem;
   background-color: var(--button-background);
   color: var(--text-color);
-  border: none;
+  border: 1px solid var(--border-color); /* Added border */
   border-radius: 8px;
-  font-size: 0.875rem;
   cursor: pointer;
   transition: background-color 0.2s;
+  text-align: center;
+  font-size: 0.875rem;
+  line-height: 1.2;
+  min-width: 100px;  /* Reduced from 120px */
+  max-width: 150px;  /* Reduced from 200px */
+  white-space: nowrap;
+  /* Removed flex: 1 */
 }
 
 .command-button:hover {
   background-color: var(--button-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .command-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .klio-header h2 {
@@ -191,5 +202,4 @@
   to {
     transform: rotate(360deg);
   }
-} 
 } 

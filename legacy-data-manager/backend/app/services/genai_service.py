@@ -56,73 +56,89 @@ class GenAIService:
             Document name: {filename}
             
             Content:
-            {content[:8000]}  # Increased content length due to Mixtral's larger context window
+            {content[:8000]}
             
-            Please suggest categories from the following hierarchy:
-            - Financial Documents
-              - Invoices
-              - Receipts
-              - Tax Documents
-            - Legal Documents
-              - Contracts
-              - Agreements
-              - Certificates
-            - HR Documents
-              - Employee Records
-              - Policies
-              - Reports
-            - Technical Documents
-              - Specifications
-              - Manuals
-              - Documentation
-            
-            Provide your response in the following JSON format:
+            Based on the content, categorize this document and provide the following information in a structured format:
+            1. Primary category (choose one): Financial Documents, Legal Documents, HR Documents, or Technical Documents
+            2. Secondary category based on the primary category selected
+            3. Confidence score between 0 and 1
+            4. Brief explanation of your categorization
+            5. Key topics found in the document
+
+            Format your response as follows (do not include any other text):
             {{
-                "primary_category": "string",
-                "secondary_category": "string",
-                "confidence_score": float,
-                "explanation": "string",
-                "key_topics": ["string"]
-            }}
-            
-            Ensure the response is valid JSON and follows the exact format specified. [/INST]"""
+                "primary_category": "one of the main categories",
+                "secondary_category": "appropriate subcategory",
+                "confidence_score": 0.95,
+                "explanation": "brief explanation",
+                "key_topics": ["topic1", "topic2"]
+            }}[/INST]</s>"""
 
             # Call Hugging Face API
             response = self.client.text_generation(
                 prompt,
                 model=self.model,
                 max_new_tokens=800,
-                temperature=0.2,
+                temperature=0.1,  # Reduced temperature for more consistent output
                 top_p=0.9,
                 repetition_penalty=1.1,
                 return_full_text=False
             )
 
-            # Parse the response
-            response_text = response
+            # Clean and parse the response
+            response_text = response.strip()
+            
             # Find the JSON part in the response
             start_idx = response_text.find("{")
             end_idx = response_text.rfind("}") + 1
-            if start_idx != -1 and end_idx != 0:
+            
+            if start_idx == -1 or end_idx <= start_idx:
+                logger.warning(f"Could not find valid JSON structure in response: {response_text}")
+                return {
+                    "primary_category": "Unknown",
+                    "secondary_category": "Unknown",
+                    "confidence_score": 0.0,
+                    "explanation": "Could not analyze document",
+                    "key_topics": []
+                }
+            
+            try:
+                # Extract and clean the JSON string
                 json_str = response_text[start_idx:end_idx]
+                # Replace any escaped characters that might cause issues
+                json_str = json_str.replace('\\"', '"').replace('\\n', ' ').replace('\\', '')
                 result = json.loads(json_str)
                 
-                # Validate the response format
-                required_fields = ["primary_category", "secondary_category", "confidence_score", "explanation", "key_topics"]
-                if not all(field in result for field in required_fields):
-                    raise ValueError("Response missing required fields")
-                
-                # Ensure confidence_score is a float
-                if not isinstance(result["confidence_score"], (int, float)):
-                    raise ValueError("confidence_score must be a number")
+                # Validate and sanitize the response
+                result = {
+                    "primary_category": str(result.get("primary_category", "Unknown")),
+                    "secondary_category": str(result.get("secondary_category", "Unknown")),
+                    "confidence_score": float(result.get("confidence_score", 0.0)),
+                    "explanation": str(result.get("explanation", "No explanation provided")),
+                    "key_topics": [str(topic) for topic in result.get("key_topics", [])]
+                }
                 
                 return result
-            else:
-                raise ValueError("Could not find valid JSON in response")
+                
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON parsing error: {e}\nResponse text: {response_text}")
+                return {
+                    "primary_category": "Unknown",
+                    "secondary_category": "Unknown",
+                    "confidence_score": 0.0,
+                    "explanation": f"Error parsing analysis results: {str(e)}",
+                    "key_topics": []
+                }
 
         except Exception as e:
             logger.error(f"Error analyzing document: {str(e)}")
-            raise
+            return {
+                "primary_category": "Unknown",
+                "secondary_category": "Unknown",
+                "confidence_score": 0.0,
+                "explanation": f"Error during analysis: {str(e)}",
+                "key_topics": []
+            }
 
     async def analyze_directory(self, files: List[Dict]) -> List[Dict]:
         """Analyze multiple files in a directory."""

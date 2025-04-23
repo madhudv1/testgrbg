@@ -273,6 +273,7 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
       
       // Transform data to match expected structure
       const transformedData = {
+        directory: directory,
         staleDocuments: data.stale_documents || 0,
         duplicateDocuments: data.duplicate_documents || 0,
         sensitiveDocuments: data.sensitive_documents || 0,
@@ -494,27 +495,16 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
         ) : (
           <>
             <div className="command-buttons">
-              <button
-                className="command-button"
-                onClick={() => handleCommand({ name: 'List Directories' })}
-                disabled={isLoading}
-              >
-                List Directories
-              </button>
-              <button
-                className="command-button"
-                onClick={() => handleCommand({ name: 'Analyze' })}
-                disabled={isLoading}
-              >
-                Analyze
-              </button>
-              <button
-                className="command-button"
-                onClick={() => handleCommand({ name: 'Clean' })}
-                disabled={isLoading}
-              >
-                Clean
-              </button>
+              {klioCommands.map((cmd) => (
+                <button
+                  key={cmd.name}
+                  className="command-button"
+                  onClick={() => handleCommand({ name: cmd.name })}
+                  disabled={isLoading}
+                >
+                  {cmd.name}
+                </button>
+              ))}
             </div>
 
             {showDirectorySelection && (
