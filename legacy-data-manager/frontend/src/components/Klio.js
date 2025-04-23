@@ -122,19 +122,43 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
   const handleConnect = async () => {
     console.log('Initiating connection...');
     try {
+      setIsLoading(true);
       const response = await fetch(`${config.apiBaseUrl}/api/v1/auth/google/login`, {
-        credentials: 'include'
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json'
+        }
       });
+      
       console.log('Connect response:', response);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to get auth URL: ${response.status}`);
+      }
+      
       const data = await response.json();
       console.log('Connect data:', data);
       
       if (data.auth_url) {
         console.log('Redirecting to auth URL:', data.auth_url);
+        // Add message before redirect
+        setMessages(prev => [...prev, {
+          type: 'assistant',
+          content: 'Redirecting you to Google for authentication...'
+        }]);
         window.location.href = data.auth_url;
+      } else {
+        throw new Error('No authentication URL received from server');
       }
     } catch (error) {
       console.error('Error connecting:', error);
+      setMessages(prev => [...prev, {
+        type: 'assistant',
+        content: `Failed to connect: ${error.message}. Please try again.`
+      }]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -197,26 +221,43 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
   };
 
   const handleAnalyze = async (directory) => {
-    if (!directory) return;
+    if (!directory) {
+      console.error('handleAnalyze called with no directory');
+      return;
+    }
     
     try {
+      console.log('Starting analysis for directory:', {
+        id: directory.id,
+        name: directory.name,
+        mimeType: directory.mimeType
+      });
       setIsLoading(true);
-      console.log('Starting analysis for directory:', directory);
       
-      const response = await fetch(`${config.apiBaseUrl}/api/v1/drive/directories/${directory.id}/analyze`, {
+      const analyzeUrl = `${config.apiBaseUrl}/api/v1/drive/directories/${directory.id}/analyze`;
+      console.log('Making analyze request to:', analyzeUrl);
+      
+      const response = await fetch(analyzeUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
         credentials: 'include'
       });
 
-      console.log('Analysis response:', response);
-      console.log('Response status:', response.status);
+      console.log('Analysis response:', {
+        status: response.status,
+        ok: response.ok,
+        statusText: response.statusText
+      });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Analysis failed:', errorData);
+        const errorData = await response.json().catch(e => ({ message: 'Failed to parse error response' }));
+        console.error('Analysis failed:', {
+          status: response.status,
+          error: errorData
+        });
         if (response.status === 401 || response.status === 403) {
           setMessages(prev => [...prev, {
             type: 'assistant',
@@ -224,29 +265,37 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
           }]);
           return;
         }
-        throw new Error(errorData.message || 'Analysis failed');
+        throw new Error(errorData.message || `Analysis failed with status ${response.status}`);
       }
 
       const data = await response.json();
-      console.log('Analysis data received:', data);
-      console.log('Detailed analysis data structure:', {
-        moreThanThreeYears: {
-          types: data.moreThanThreeYears?.types,
-          risks: data.moreThanThreeYears?.risks
-        },
-        oneToThreeYears: {
-          types: data.oneToThreeYears?.types,
-          risks: data.oneToThreeYears?.risks
-        },
-        lessThanOneYear: {
-          types: data.lessThanOneYear?.types,
-          risks: data.lessThanOneYear?.risks
+      console.log('Raw analysis data received:', data);
+      
+      // Transform data to match expected structure
+      const transformedData = {
+        staleDocuments: data.stale_documents || 0,
+        duplicateDocuments: data.duplicate_documents || 0,
+        sensitiveDocuments: data.sensitive_documents || 0,
+        ageDistribution: {
+          moreThanThreeYears: {
+            types: transformFileTypes(data.moreThanThreeYears?.file_types),
+            risks: transformSensitiveInfo(data.moreThanThreeYears?.sensitive_info)
+          },
+          oneToThreeYears: {
+            types: transformFileTypes(data.oneToThreeYears?.file_types),
+            risks: transformSensitiveInfo(data.oneToThreeYears?.sensitive_info)
+          },
+          lessThanOneYear: {
+            types: transformFileTypes(data.lessThanOneYear?.file_types),
+            risks: transformSensitiveInfo(data.lessThanOneYear?.sensitive_info)
+          }
         }
-      });
-
-      // Pass the data to the parent component
-      console.log('Sending analysis data to parent component');
-      onStatsUpdate(data);
+      };
+      
+      console.log('Transformed data before sending to parent:', transformedData);
+      
+      // Pass the transformed data to the parent component
+      onStatsUpdate(transformedData);
 
       // Reset UI state after successful analysis
       setShowAnalysisOptions(false);
@@ -266,6 +315,41 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Helper function to transform file types data
+  const transformFileTypes = (fileTypes) => {
+    if (!fileTypes) return {};
+    
+    const result = {};
+    for (const [type, files] of Object.entries(fileTypes)) {
+      if (Array.isArray(files)) {
+        const totalSize = files.reduce((total, file) => total + (parseInt(file.size) || 0), 0);
+        result[type] = {
+          count: files.length,
+          size: totalSize,
+          files: files // Keep the original files array
+        };
+      }
+    }
+    return result;
+  };
+
+  // Helper function to transform sensitive info data
+  const transformSensitiveInfo = (sensitiveInfo) => {
+    if (!sensitiveInfo) return {};
+    
+    const result = {};
+    for (const [type, files] of Object.entries(sensitiveInfo)) {
+      if (Array.isArray(files)) {
+        result[type] = {
+          count: files.length,
+          files: files, // Keep the original files array
+          confidence: files.length > 0 ? files.reduce((sum, file) => sum + (file.confidence || 0), 0) / files.length : 0
+        };
+      }
+    }
+    return result;
   };
 
   const handleClean = async () => {
@@ -309,11 +393,19 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
     }
   };
 
-  const handleDirectorySelect = (directory) => {
+  const handleDirectorySelect = async (directory) => {
+    console.log('Directory selected:', {
+      id: directory.id,
+      name: directory.name,
+      mimeType: directory.mimeType
+    });
+    
+    // First update the UI state
     setSelectedDirectory(directory);
     setShowDirectorySelection(false);
-    handleAnalyze(selectedDirectory);
-    //setShowAnalysisOptions(true);
+    
+    // Then start the analysis
+    await handleAnalyze(directory);
   };
 
   const handleMessageSubmit = (e) => {

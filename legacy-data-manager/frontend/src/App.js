@@ -16,54 +16,17 @@ function App() {
     duplicateDocuments: 0,
     sensitiveDocuments: 0,
     ageDistribution: {
-      // Dummy data for development
       moreThanThreeYears: {
-        types: {
-          documents: { count: 45, size: 15000000, percentage: 30 },
-          spreadsheets: { count: 30, size: 8000000, percentage: 20 },
-          presentations: { count: 15, size: 20000000, percentage: 10 },
-          pdfs: { count: 30, size: 25000000, percentage: 20 },
-          images: { count: 15, size: 12000000, percentage: 10 },
-          others: { count: 15, size: 5000000, percentage: 10 }
-        },
-        risks: {
-          pii: { count: 20, size: 5000000, percentage: 40 },
-          financial: { count: 15, size: 4000000, percentage: 30 },
-          legal: { count: 10, size: 3000000, percentage: 20 },
-          confidential: { count: 5, size: 1000000, percentage: 10 }
-        }
+        types: {},
+        risks: {}
       },
       oneToThreeYears: {
-        types: {
-          documents: { count: 30, size: 10000000, percentage: 25 },
-          spreadsheets: { count: 25, size: 6000000, percentage: 20 },
-          presentations: { count: 20, size: 15000000, percentage: 15 },
-          pdfs: { count: 25, size: 20000000, percentage: 20 },
-          images: { count: 15, size: 10000000, percentage: 12 },
-          others: { count: 10, size: 4000000, percentage: 8 }
-        },
-        risks: {
-          pii: { count: 15, size: 4000000, percentage: 35 },
-          financial: { count: 12, size: 3000000, percentage: 28 },
-          legal: { count: 10, size: 2500000, percentage: 23 },
-          confidential: { count: 6, size: 1500000, percentage: 14 }
-        }
+        types: {},
+        risks: {}
       },
       lessThanOneYear: {
-        types: {
-          documents: { count: 20, size: 8000000, percentage: 22 },
-          spreadsheets: { count: 18, size: 5000000, percentage: 20 },
-          presentations: { count: 15, size: 12000000, percentage: 16 },
-          pdfs: { count: 20, size: 18000000, percentage: 22 },
-          images: { count: 12, size: 9000000, percentage: 13 },
-          others: { count: 7, size: 3000000, percentage: 7 }
-        },
-        risks: {
-          pii: { count: 10, size: 3000000, percentage: 30 },
-          financial: { count: 8, size: 2500000, percentage: 25 },
-          legal: { count: 8, size: 2000000, percentage: 25 },
-          confidential: { count: 6, size: 1500000, percentage: 20 }
-        }
+        types: {},
+        risks: {}
       }
     }
   });
@@ -136,23 +99,65 @@ function App() {
     }
   };
 
-  // MV TBD compare 
   const handleStatsUpdate = (newStats) => {
-    console.log('Received new stats:', newStats);
+    console.log('Received new stats in App.js:', newStats);
     
     setStats(prevStats => {
       // Create updated stats object with the new structure
       const updatedStats = {
         ...prevStats,
-        totalFiles: newStats.total_files,
+        staleDocuments: newStats.staleDocuments || 0,
+        duplicateDocuments: newStats.duplicateDocuments || 0,
+        sensitiveDocuments: newStats.sensitiveDocuments || 0,
         ageDistribution: {
-          lessThanOneYear: newStats.ageDistribution?.lessThanOneYear || prevStats.ageDistribution.lessThanOneYear,
-          oneToThreeYears: newStats.ageDistribution?.oneToThreeYears || prevStats.ageDistribution.oneToThreeYears,
-          moreThanThreeYears: newStats.ageDistribution?.moreThanThreeYears || prevStats.ageDistribution.moreThanThreeYears
+          moreThanThreeYears: {
+            types: newStats.ageDistribution?.moreThanThreeYears?.types || {},
+            risks: newStats.ageDistribution?.moreThanThreeYears?.risks || {}
+          },
+          oneToThreeYears: {
+            types: newStats.ageDistribution?.oneToThreeYears?.types || {},
+            risks: newStats.ageDistribution?.oneToThreeYears?.risks || {}
+          },
+          lessThanOneYear: {
+            types: newStats.ageDistribution?.lessThanOneYear?.types || {},
+            risks: newStats.ageDistribution?.lessThanOneYear?.risks || {}
+          }
         }
       };
       
-      console.log('Updated stats:', updatedStats);
+      // Calculate percentages for each age category
+      Object.keys(updatedStats.ageDistribution).forEach(ageKey => {
+        const ageData = updatedStats.ageDistribution[ageKey];
+        
+        // Calculate total files for types
+        const totalFiles = Object.values(ageData.types).reduce((sum, type) => sum + (type.count || 0), 0);
+        
+        // Calculate percentages for types
+        Object.keys(ageData.types).forEach(typeKey => {
+          const typeData = ageData.types[typeKey];
+          if (typeData && totalFiles > 0) {
+            typeData.percentage = Math.round((typeData.count / totalFiles) * 100);
+          } else {
+            typeData.percentage = 0;
+          }
+        });
+        
+        // Calculate total risks
+        const totalRisks = Object.values(ageData.risks).reduce((sum, risk) => sum + (risk.count || 0), 0);
+        
+        // Calculate percentages for risks
+        Object.keys(ageData.risks).forEach(riskKey => {
+          const riskData = ageData.risks[riskKey];
+          if (riskData && totalRisks > 0) {
+            riskData.percentage = Math.round((riskData.count / totalRisks) * 100);
+          } else {
+            riskData.percentage = 0;
+          }
+        });
+      });
+      
+      console.log('Updated stats object:', updatedStats);
+      console.log('Age distribution data:', updatedStats.ageDistribution);
       return updatedStats;
     });
   };
@@ -223,8 +228,8 @@ function App() {
                   <div 
                     className="bar" 
                     style={{ 
-                      width: `${percentage}%`,
-                      backgroundColor: fileTypeColors[type],
+                      width: 1, //`${percentage}%`,
+                      backgroundColor: fileTypeColors[type]|| '#757575',
                       opacity: 0.85
                     }}
                   ></div>
@@ -256,7 +261,7 @@ function App() {
     const sensitiveColor = '#DB4437'; // Red
     const cleanColor = '#0F9D58'; // Green
 
-    return (
+  return (
       <div className="risk-bars"> {/* Use a specific class */} 
         <div className="risk-bar"> {/* Class for individual bar row */} 
           <span className="risk-label">Sensitive</span>
@@ -296,84 +301,63 @@ function App() {
     );
   };
 
-  /* MV Original
-  const renderAgeSection = (data, title) => {
-    if (!data) return null;
-
-    return (
-      <div className="age-section">
-        <h3>{title}</h3>
-        
-        {/* Types Section *}
-        <div className="section-content">
-          <h4>File Types</h4>
-          <div className="type-bars">
-            {Object.entries(data.types).map(([type, stats]) => (
-              <div key={type} className="type-bar">
-                <span className="type-label">{type.charAt(0).toUpperCase() + type.slice(1)}</span>
-                <div className="bar-container">
-                  <div 
-                    className="bar" 
-                    style={{ 
-                      width: `${stats.percentage}%`,
-                      backgroundColor: fileTypeColors[type],
-                      opacity: 0.85
-                    }}
-                  ></div>
-                </div>
-                <div className="type-stats">
-                  <span className="type-count">{stats.count} files</span>
-                  <span className="type-size">{formatBytes(stats.size)}</span>
-                  <span className="type-percentage">{stats.percentage}%</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Risks Section *}
-        <div className="section-content">
-          <h4>Risks</h4>
-          <div className="risk-bars">
-            {Object.entries(data.risks).map(([risk, stats]) => (
-              <div key={risk} className="risk-bar">
-                <span className="risk-label">{risk.charAt(0).toUpperCase() + risk.slice(1)}</span>
-                <div className="bar-container">
-                  <div 
-                    className="bar" 
-                    style={{ 
-                      width: `${stats.percentage}%`,
-                      backgroundColor: '#DB4437',
-                      opacity: 0.85
-                    }}
-                  ></div>
-                </div>
-                <div className="risk-stats">
-                  <span className="risk-count">{stats.count} files</span>
-                  <span className="risk-size">{formatBytes(stats.size)}</span>
-                  <span className="risk-percentage">{stats.percentage}%</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  };*/
-
   const renderAgeSection = (data, title) => {    
     if (!data) {
       console.log('No data provided to renderAgeSection');
       return null;
     }
 
+    console.log('Rendering age section with data:', data);
+
+    // Extract types and risks from the data
+    const { types = {}, risks = {} } = data;
+
+    console.log('Types data structure:', {
+      rawTypes: types,
+      typeValues: Object.values(types),
+      typeEntries: Object.entries(types),
+      typeKeys: Object.keys(types)
+    });
+
+    console.log('Risks data structure:', {
+      rawRisks: risks,
+      riskValues: Object.values(risks),
+      riskEntries: Object.entries(risks),
+      riskKeys: Object.keys(risks)
+    });
+
+    // Calculate total count for types to get percentages
+    const totalTypeCount = Object.values(types).reduce((sum, type) => {
+      console.log('Processing type:', type);
+      const count = type.count || 0;
+      console.log('Type count:', count);
+      return sum + count;
+    }, 0);
+    
+    console.log('Final totalTypeCount:', totalTypeCount);
+
     // Calculate total PII items in this age category
-    const totalPiiCount = Object.values(data.risks || {}).reduce((sum, risk) => 
-      sum + (risk.count || 0), 0
-    );
+    const totalPiiCount = Object.values(risks).reduce((sum, risk) => {
+      console.log('Processing risk:', risk);
+      const count = risk.count || 0;
+      console.log('Risk count:', count);
+      return sum + count;
+    }, 0);
+
+    console.log('Final totalPiiCount:', totalPiiCount);
+
+    // Calculate percentages for types
+    const typeData = { ...types };
+    if (totalTypeCount > 0) {
+      Object.keys(typeData).forEach(type => {
+        if (typeData[type]) {
+          typeData[type].percentage = Math.round((typeData[type].count / totalTypeCount) * 100);
+        }
+      });
+    }
 
     // Calculate percentages for PII items
-    const piiData = { ...data.risks };
+    const piiData = { ...risks };
     if (totalPiiCount > 0) {
       Object.keys(piiData).forEach(type => {
         if (piiData[type]) {
@@ -404,13 +388,18 @@ function App() {
 
     return (
       <div className="age-section">
-        <h3>{title}</h3>
+        <h3>{title}, {totalTypeCount}, {totalPiiCount}</h3>
         <div className="age-section-content">
           {/* Types Section */}
           <div className="section-content">
             <h4>File Types</h4>
             <div className="type-bars">
-              {Object.entries(data.types || {}).map(([type, stats]) => {
+              {Object.entries(typeData).map(([type, stats]) => {
+                // Ensure stats has the required properties
+                const count = stats.count || 0;
+                const size = stats.size || 0;
+                const percentage = stats.percentage || 0;
+
                 return (
                   <div key={type} className="type-bar">
                     <span className="type-label">{type.charAt(0).toUpperCase() + type.slice(1)}</span>
@@ -418,16 +407,16 @@ function App() {
                       <div 
                         className="bar" 
                         style={{ 
-                          width: `${stats.percentage}%`,
-                          backgroundColor: fileTypeColors[type],
+                          width: `${percentage}%`,
+                          backgroundColor: fileTypeColors[type] || '#757575',
                           opacity: 0.85
                         }}
                       ></div>
                     </div>
                     <div className="type-stats">
-                      <span className="type-count">{stats.count || 0} files</span>
-                      <span className="type-size">{formatBytes(stats.size || 0)}</span>
-                      <span className="type-percentage">{stats.percentage || 0}%</span>
+                      <span className="type-count">{count} files</span>
+                      <span className="type-size">{formatBytes(size)}</span>
+                      <span className="type-percentage">{percentage}%</span>
                     </div>
                   </div>
                 );
@@ -435,13 +424,11 @@ function App() {
             </div>
           </div>
 
-          {/* PII Section */}
+          {/* Risks Section */}
           <div className="section-content">
-            <h4>Risk {totalPiiCount > 0 && 
-              <span className="pii-total">({totalPiiCount} items found)</span>
-            }</h4>
+            <h4>Risk</h4>
             <div className="type-bars">
-              {Object.entries(piiData || {}).map(([type, info]) => {
+              {Object.entries(piiData).map(([type, info]) => {
                 if (info && info.count > 0) {
                   return (
                     <div key={type} className="type-bar">
@@ -452,18 +439,20 @@ function App() {
                         <div 
                           className="bar" 
                           style={{ 
-                            width: `${info.percentage}%`,
-                            backgroundColor: piiColors[type] || '#6C5CE7',
+                            width: `${info.percentage || 0}%`,
+                            backgroundColor: piiColors[type] || '#DB4437',
                             opacity: 0.85
                           }}
                         ></div>
                       </div>
                       <div className="type-stats">
                         <span className="type-count">{info.count} found</span>
-                        <span className={`pii-badge ${info.confidence >= 0.9 ? 'high' : 'medium'}`}>
-                          {Math.round((info.confidence || 0) * 100)}%
-                        </span>
-                        <span className="type-percentage">{info.percentage}%</span>
+                        {info.confidence && (
+                          <span className={`pii-badge ${info.confidence >= 0.9 ? 'high' : 'medium'}`}>
+                            {Math.round(info.confidence * 100)}%
+                          </span>
+                        )}
+                        <span className="type-percentage">{info.percentage || 0}%</span>
                       </div>
                     </div>
                   );
@@ -484,15 +473,19 @@ function App() {
       case 'oneToThreeYears':
         return renderAgeSection(stats.ageDistribution?.oneToThreeYears, 'Files 1-3 years old');
       case 'lessThanOneYear':
-        return renderAgeSection(stats.ageDistribution?.lessThanOneYear, 'Files < 1 year old');
+        // Calculate total count for types to get percentages
+    const totalTypeCount = Object.values(stats.ageDistribution?.lessThanOneYear.types).reduce((sum, type) => sum + (type.count || 0), 0);
+    const totalRiskCount = Object.values(stats.ageDistribution?.lessThanOneYear.risks).reduce((sum, risk) => sum + (risk.count || 0), 0);
+  
+        return renderAgeSection(stats.ageDistribution?.lessThanOneYear, 'Files < 1 year old ( files '+ totalTypeCount + ',  risks  ' + totalRiskCount + ' )');
       case 'type':
         return renderFileTypeContent();
-      case 'owner':
-        return <div className="tab-content">Ownership analysis coming soon</div>;
-      case 'usage':
-        return <div className="tab-content">Usage analysis coming soon</div>;
-      case 'risk':
-        return renderRiskContent();
+      //case 'owner':
+      //  return <div className="tab-content">Ownership analysis coming soon</div>;
+      //case 'usage':
+      //  return <div className="tab-content">Usage analysis coming soon</div>;
+      //case 'risk':
+      //  return renderRiskContent();
       default:
         return null;
     }
@@ -612,7 +605,7 @@ function App() {
                   />
                 </div>
               </div>
-            </div>
+    </div>
           }
         />
       </Routes>
