@@ -12,7 +12,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('moreThanThreeYears');
   const [typeSort, setTypeSort] = useState('count'); // 'count' or 'size'
   const [stats, setStats] = useState({
-    staleDocuments: 0,
+    docCount: 0,
     duplicateDocuments: 0,
     sensitiveDocuments: 0,
     ageDistribution: {
@@ -107,64 +107,8 @@ function App() {
       setSelectedDirectory(newStats.directory);
     }
     
-    setStats(prevStats => {
-      // Create updated stats object with the new structure
-      const updatedStats = {
-        ...prevStats,
-        staleDocuments: newStats.staleDocuments || 0,
-        duplicateDocuments: newStats.duplicateDocuments || 0,
-        sensitiveDocuments: newStats.sensitiveDocuments || 0,
-        ageDistribution: {
-          moreThanThreeYears: {
-            types: newStats.ageDistribution?.moreThanThreeYears?.types || {},
-            risks: newStats.ageDistribution?.moreThanThreeYears?.risks || {}
-          },
-          oneToThreeYears: {
-            types: newStats.ageDistribution?.oneToThreeYears?.types || {},
-            risks: newStats.ageDistribution?.oneToThreeYears?.risks || {}
-          },
-          lessThanOneYear: {
-            types: newStats.ageDistribution?.lessThanOneYear?.types || {},
-            risks: newStats.ageDistribution?.lessThanOneYear?.risks || {}
-          }
-        }
-      };
-      
-      // Calculate percentages for each age category
-      Object.keys(updatedStats.ageDistribution).forEach(ageKey => {
-        const ageData = updatedStats.ageDistribution[ageKey];
-        
-        // Calculate total files for types
-        const totalFiles = Object.values(ageData.types).reduce((sum, type) => sum + (type.count || 0), 0);
-        
-        // Calculate percentages for types
-        Object.keys(ageData.types).forEach(typeKey => {
-          const typeData = ageData.types[typeKey];
-          if (typeData && totalFiles > 0) {
-            typeData.percentage = Math.round((typeData.count / totalFiles) * 100);
-          } else {
-            typeData.percentage = 0;
-          }
-        });
-        
-        // Calculate total risks
-        const totalRisks = Object.values(ageData.risks).reduce((sum, risk) => sum + (risk.count || 0), 0);
-        
-        // Calculate percentages for risks
-        Object.keys(ageData.risks).forEach(riskKey => {
-          const riskData = ageData.risks[riskKey];
-          if (riskData && totalRisks > 0) {
-            riskData.percentage = Math.round((riskData.count / totalRisks) * 100);
-          } else {
-            riskData.percentage = 0;
-          }
-        });
-      });
-      
-      console.log('Updated stats object:', updatedStats);
-      console.log('Age distribution data:', updatedStats.ageDistribution);
-      return updatedStats;
-    });
+    // Simply update the stats with the pre-transformed data
+    setStats(newStats);
   };
 
   const formatBytes = (bytes) => {
@@ -306,90 +250,56 @@ function App() {
     );
   };
 
+  // Helper function to group findings by their primary category
+  const groupFindingsByCategory = (risks) => {
+    const groupedRisks = {
+      pii: { count: 0, items: [], confidence: 0 },
+      financial: { count: 0, items: [], confidence: 0 },
+      legal: { count: 0, items: [], confidence: 0 },
+      confidential: { count: 0, items: [], confidence: 0 }
+    };
+
+    // Process each risk entry
+    Object.entries(risks).forEach(([type, info]) => {
+      // Skip if no info or no count
+      if (!info || !info.count) return;
+
+      // Determine the category based on the type
+      let category = 'confidential'; // default category
+      if (type.includes('pii') || type.includes('email') || type.includes('phone') || type.includes('address')) {
+        category = 'pii';
+      } else if (type.includes('financial') || type.includes('bank') || type.includes('credit')) {
+        category = 'financial';
+      } else if (type.includes('legal') || type.includes('contract') || type.includes('agreement')) {
+        category = 'legal';
+      }
+
+      // Add to the appropriate category
+      groupedRisks[category].count += info.count;
+      groupedRisks[category].items.push({
+        type: type,
+        count: info.count,
+        confidence: info.confidence || 80,
+        files: info.files || []
+      });
+
+      // Update category confidence
+      if (info.confidence) {
+        groupedRisks[category].confidence = 
+          (groupedRisks[category].confidence * (groupedRisks[category].items.length - 1) + info.confidence) / 
+          groupedRisks[category].items.length;
+      }
+    });
+
+    return groupedRisks;
+  };
+
   const renderAgeSection = (data, title) => {    
     if (!data) {
-      console.log('No data provided to renderAgeSection');
       return null;
     }
 
-    console.log('Rendering age section with data:', data);
-
-    // Extract types and risks from the data
     const { types = {}, risks = {} } = data;
-
-    console.log('Types data structure:', {
-      rawTypes: types,
-      typeValues: Object.values(types),
-      typeEntries: Object.entries(types),
-      typeKeys: Object.keys(types)
-    });
-
-    console.log('Risks data structure:', {
-      rawRisks: risks,
-      riskValues: Object.values(risks),
-      riskEntries: Object.entries(risks),
-      riskKeys: Object.keys(risks)
-    });
-
-    // Calculate total count for types to get percentages
-    const totalTypeCount = Object.values(types).reduce((sum, type) => {
-      console.log('Processing type:', type);
-      const count = type.count || 0;
-      console.log('Type count:', count);
-      return sum + count;
-    }, 0);
-    
-    console.log('Final totalTypeCount:', totalTypeCount);
-
-    // Calculate total PII items in this age category
-    const totalPiiCount = Object.values(risks).reduce((sum, risk) => {
-      console.log('Processing risk:', risk);
-      const count = risk.count || 0;
-      console.log('Risk count:', count);
-      return sum + count;
-    }, 0);
-
-    console.log('Final totalPiiCount:', totalPiiCount);
-
-    // Calculate percentages for types
-    const typeData = { ...types };
-    if (totalTypeCount > 0) {
-      Object.keys(typeData).forEach(type => {
-        if (typeData[type]) {
-          typeData[type].percentage = Math.round((typeData[type].count / totalTypeCount) * 100);
-        }
-      });
-    }
-
-    // Calculate percentages for PII items
-    const piiData = { ...risks };
-    if (totalPiiCount > 0) {
-      Object.keys(piiData).forEach(type => {
-        if (piiData[type]) {
-          piiData[type].percentage = Math.round((piiData[type].count / totalPiiCount) * 100);
-        }
-      });
-    }
-
-    // Colors for different PII types
-    const piiColors = {
-      //pii (red #FF6B6B)
-      pii: '#FF6B6B',      // Coral Red
-      email: '#FF6B6B',    // Coral Red
-
-      //financial (mint #A8E6CF)
-      financial: '#A8E6CF',    // Mint
-      credit_card: '#A8E6CF',  // Mint
-      
-      //confidential (orange #FF9F43)
-      confidential: '#FF9F43',  // Orange
-      ip_address: '#FF9F43',    // Orange
-      
-      //legal (blue #4834D4)
-      legal: '#4834D4',    // Blue
-      ssn: '#4834D4',      // Blue
-      phone: '#4834D4',    // Blue
-    };
 
     return (
       <div className="age-section">
@@ -399,78 +309,121 @@ function App() {
           <div className="section-content">
             <h4>File Types</h4>
             <div className="type-bars">
-              {Object.entries(typeData).map(([type, stats]) => {
-                // Ensure stats has the required properties
-                const count = stats.count || 0;
-                const size = stats.size || 0;
-                const percentage = stats.percentage || 0;
-
-                // Only render if there are files of this type
-                if (count > 0) {
-                  return (
-                    <div key={type} className="type-bar">
-                      <span className="type-label">{type.charAt(0).toUpperCase() + type.slice(1)}</span>
-                      <div className="bar-container">
-                        <div 
-                          className="bar" 
-                          style={{ 
-                            width: `${percentage}%`,
-                            backgroundColor: fileTypeColors[type] || '#757575',
-                            opacity: 0.85
-                          }}
-                        ></div>
-                      </div>
-                      <div className="type-stats">
-                        <span className="type-count">{count} files</span>
-                        <span className="type-size">{formatBytes(size)}</span>
-                        <span className="type-percentage">{percentage}%</span>
-                      </div>
+              {Object.entries(types)
+                .filter(([_, stats]) => stats.count > 0)
+                .sort((a, b) => b[1].count - a[1].count)
+                .map(([type, stats]) => (
+                  <div key={type} className="type-bar">
+                    <span className="type-label">{type.charAt(0).toUpperCase() + type.slice(1)}</span>
+                    <div className="bar-container">
+                      <div 
+                        className="bar" 
+                        style={{ 
+                          width: `${stats.percentage}%`,
+                          backgroundColor: fileTypeColors[type] || '#757575'
+                        }}
+                      ></div>
                     </div>
-                  );
-                }
-                return null;
-              }).filter(Boolean)}
+                    <div className="type-stats">
+                      <span className="type-count">{stats.count} files</span>
+                      <span className="type-size">{formatBytes(stats.size || 0)}</span>
+                      <span className="type-percentage">{stats.percentage.toFixed(1)}%</span>
+                    </div>
+                  </div>
+                ))}
             </div>
           </div>
 
           {/* Risks Section */}
           <div className="section-content">
-            <h4>Risk</h4>
+            <h4>Risk Categories</h4>
             <div className="type-bars">
-              {Object.entries(piiData).map(([type, info]) => {
-                if (info && info.count > 0) {
+              {Object.entries(risks)
+                .filter(([_, stats]) => stats.count > 0)
+                .sort((a, b) => b[1].count - a[1].count)
+                .map(([category, stats]) => {
+                  const riskColors = {
+                    pii: '#e74c3c',
+                    financial: '#f39c12',
+                    legal: '#8e44ad',
+                    confidential: '#c0392b'
+                  };
+                  
                   return (
-                    <div key={type} className="type-bar">
+                    <div key={category} className="type-bar">
                       <span className="type-label">
-                        {type.replace(/_/g, ' ').toUpperCase()}
+                        {category.charAt(0).toUpperCase() + category.slice(1)}
                       </span>
                       <div className="bar-container">
                         <div 
                           className="bar" 
                           style={{ 
-                            width: `${info.percentage || 0}%`,
-                            backgroundColor: piiColors[type] || '#DB4437',
-                            opacity: 0.85
+                            width: `${stats.percentage}%`,
+                            backgroundColor: riskColors[category] || '#757575'
                           }}
                         ></div>
                       </div>
                       <div className="type-stats">
-                        <span className="type-count">{info.count} found</span>
-                        {info.confidence && (
-                          <span className={`pii-badge ${info.confidence >= 0.9 ? 'high' : 'medium'}`}>
-                            {Math.round(info.confidence * 100)}%
-                          </span>
-                        )}
-                        <span className="type-percentage">{info.percentage || 0}%</span>
+                        <span className="type-count">{stats.count} files</span>
+                        <span className="type-percentage">{stats.percentage.toFixed(1)}%</span>
                       </div>
                     </div>
                   );
-                }
-                return null;
-              }).filter(Boolean)}
+                })}
             </div>
           </div>
         </div>
+      </div>
+    );
+  };
+
+  const RiskCategory = ({ category, findings }) => {
+    const totalFindings = findings.reduce((sum, f) => sum + f.count, 0);
+    const percentage = Math.min(totalFindings * 10, 100); // Cap at 100%
+    
+    const riskColors = {
+      pii: '#e74c3c',
+      financial: '#f39c12',
+      legal: '#8e44ad',
+      confidential: '#c0392b'
+    };
+    
+    return (
+      <div className="type-bar">
+        <span className="type-label">
+          {category.charAt(0).toUpperCase() + category.slice(1)}
+        </span>
+        <div className="bar-container">
+          <div 
+            className="bar" 
+            style={{ 
+              width: `${percentage}%`,
+              backgroundColor: riskColors[category]
+            }}
+          ></div>
+        </div>
+        <div className="type-stats">
+          <span className="type-count">{totalFindings} files</span>
+          <span className="type-percentage">{percentage.toFixed(1)}%</span>
+        </div>
+      </div>
+    );
+  };
+
+  const RiskCategories = ({ findings }) => {
+    const groupedFindings = groupFindingsByCategory(findings);
+    
+    return (
+      <div className="type-bars">
+        {Object.entries(groupedFindings)
+          .filter(([_, data]) => data.count > 0)
+          .map(([category, data]) => (
+            <RiskCategory 
+              key={category} 
+              category={category} 
+              findings={data.items} 
+            />
+          ))}
       </div>
     );
   };
@@ -514,8 +467,8 @@ function App() {
                     <div className="stats-grid">
                       <div className="stat-card" title="Total documents in this drive">
                         <div className="stat-number">
-                          {stats.staleDocuments.toLocaleString()}
-                          {stats.staleDocuments > 0 && <span className="trend-up">↑</span>}
+                          {stats.docCount.toLocaleString()}
+                          {stats.docCount > 0 && <span className="trend-up">↑</span>}
                         </div>
                         <div className="stat-label">Files scanned</div>
                       </div>

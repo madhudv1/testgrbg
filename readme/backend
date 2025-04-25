@@ -10,6 +10,9 @@
     kill -9 $(lsof -t -i:8000)
     lsof -i :8000 | grep LISTEN | awk '{print $2}' | xargs kill -9
 
+# Install dependencies
+    pip install -r requirements.txt
+
 #FastAPI LegacyData
     http://localhost:8000/docs
 

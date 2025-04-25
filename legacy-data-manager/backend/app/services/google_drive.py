@@ -26,7 +26,6 @@ class GoogleDriveService:
     def __init__(self):
         self.credentials = None
         self.service = None
-        logger.info(f"Token file path: {self.TOKEN_FILE}")
 
     async def ensure_service(self):
         """Ensure the service is built with timeout."""
@@ -74,7 +73,6 @@ class GoogleDriveService:
             credentials = self.load_credentials()
             
             if not credentials:
-                logger.debug("No credentials found")
                 return False
                 
             # Validate refresh token exists
@@ -84,12 +82,10 @@ class GoogleDriveService:
                 
             # Check if expired and try to refresh
             if credentials.expired:
-                logger.debug("Credentials expired, attempting refresh")
                 try:
                     async with asyncio.timeout(5):  # 5 second timeout
                         await asyncio.to_thread(lambda: credentials.refresh(Request()))
                         await asyncio.to_thread(self.save_credentials, credentials)
-                        logger.debug("Successfully refreshed credentials")
                 except asyncio.TimeoutError:
                     logger.error("Timeout refreshing credentials")
                     return False
@@ -97,7 +93,6 @@ class GoogleDriveService:
                     logger.error(f"Failed to refresh expired credentials: {e}")
                     return False
             
-            logger.debug("Authentication check successful")
             return True
         except Exception as e:
             logger.error(f"Error checking authentication: {e}", exc_info=True)
@@ -192,36 +187,30 @@ class GoogleDriveService:
             return False
 
     async def get_auth_url(self, state: str = None) -> str:
-        """Generate the authorization URL for Google OAuth2."""
-        logger.debug("Generating auth URL")
-        try:
-            client_config = {
-                "web": {
-                    "client_id": settings.GOOGLE_CLIENT_ID,
-                    "client_secret": settings.GOOGLE_CLIENT_SECRET,
-                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                    "token_uri": "https://oauth2.googleapis.com/token",
-                    "redirect_uris": [settings.GOOGLE_REDIRECT_URI],
-                }
+        """Generate the authorization URL for Google OAuth2."""        #try:
+        client_config = {
+            "web": {
+                "client_id": settings.GOOGLE_CLIENT_ID,
+                "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [settings.GOOGLE_REDIRECT_URI],
             }
+        }
+        
+        flow = Flow.from_client_config(
+            client_config=client_config,
+            scopes=self.SCOPES
+        )
+        flow.redirect_uri = settings.GOOGLE_REDIRECT_URI
             
-            flow = Flow.from_client_config(
-                client_config=client_config,
-                scopes=self.SCOPES
-            )
-            flow.redirect_uri = settings.GOOGLE_REDIRECT_URI
-            
-            auth_url, _ = flow.authorization_url(
-                access_type='offline',
+        auth_url, _ = flow.authorization_url(
+            access_type='offline',
                 prompt='consent',
                 include_granted_scopes='true',
                 state=state
-            )
-            logger.debug(f"Generated auth URL with redirect_uri: {settings.GOOGLE_REDIRECT_URI}")
-            return auth_url
-        except Exception as e:
-            logger.error(f"Error generating auth URL: {e}", exc_info=True)
-            raise
+        )
+        return auth_url
 
     def get_credentials_from_code(self, code: str) -> Credentials:
         """Get credentials from authorization code."""
@@ -247,7 +236,6 @@ class GoogleDriveService:
             
             # Validate we have a refresh token
             if not credentials.refresh_token:
-                logger.error("No refresh token received from Google OAuth flow")
                 raise ValueError("No refresh token received. Please try again.")
                 
             # Save the credentials
@@ -278,7 +266,6 @@ class GoogleDriveService:
         cutoff_date = datetime.utcnow() - timedelta(days=months_threshold * 30)
         cutoff_date_str = cutoff_date.isoformat() + 'Z'
         
-        logger.debug(f"Querying for files modified before: {cutoff_date_str}")
         
         # Query for files modified before the cutoff date
         try:
@@ -289,7 +276,6 @@ class GoogleDriveService:
             ).execute()
             
             files = results.get('files', [])
-            logger.debug(f"Found {len(files)} inactive files")
             return files
         except Exception as e:
             logger.error(f"Error in get_inactive_files: {str(e)}", exc_info=True)
@@ -297,7 +283,6 @@ class GoogleDriveService:
 
     async def list_directory(self, folder_id: str, page_size: int = 100, recursive: bool = False) -> List[Dict]:
         """List files in a specific directory."""
-        logger.info(f"Attempting to list directory with ID: {folder_id} (recursive: {recursive})")
         await self.ensure_service()
         
         if recursive:
@@ -312,7 +297,6 @@ class GoogleDriveService:
             fields="files(id, name, mimeType, modifiedTime, owners, lastModifyingUser, createdTime, size)"
         ).execute()
             )
-            logger.info(f"Successfully listed directory {folder_id}")
             return results.get('files', [])
         except HttpError as error:
             logger.error(f"Google Drive API error listing directory {folder_id}: {error}")
@@ -330,7 +314,6 @@ class GoogleDriveService:
             for file in files:
                 if file['mimeType'] == 'application/vnd.google-apps.folder':
                     # Recursively get files from subdirectory
-                    logger.info(f"Recursively listing subdirectory: {file['name']} ({file['id']})")
                     sub_files = await self._recursive_list_directory(file['id'], page_size)
                     all_files.extend(sub_files)
                 else:
@@ -345,9 +328,18 @@ class GoogleDriveService:
     async def get_file_content(self, file_id: str) -> Optional[str]:
         """Get the content of a file from Google Drive."""
         try:
+            await self.ensure_service()
+            
             # Get the file metadata first
-            file = await self.service.files().get(fileId=file_id, 
-                                                fields='mimeType').execute()
+            file_metadata = await asyncio.to_thread(
+                lambda: self.service.files().get(
+                    fileId=file_id, 
+                    fields='mimeType,size'
+                ).execute()
+            )
+            
+            mime_type = file_metadata.get('mimeType', '')
+            timeout = 30  # 30 second timeout for file operations
             
             # Handle Google Workspace files
             if mime_type.startswith('application/vnd.google-apps.'):
@@ -355,10 +347,10 @@ class GoogleDriveService:
                     try:
                         response = await asyncio.wait_for(
                             asyncio.to_thread(
-                                self.service.files().export(
+                                lambda: self.service.files().export(
                                     fileId=file_id,
                                     mimeType='text/plain'
-                                ).execute
+                                ).execute()
                             ),
                             timeout=timeout
                         )
@@ -369,15 +361,14 @@ class GoogleDriveService:
                     except Exception as e:
                         logger.error(f"Error exporting Google Doc {file_id}: {e}")
                         return ""
-                
                 elif mime_type == 'application/vnd.google-apps.spreadsheet':
                     try:
                         response = await asyncio.wait_for(
                             asyncio.to_thread(
-                                self.service.files().export(
+                                lambda: self.service.files().export(
                                     fileId=file_id,
                                     mimeType='text/csv'
-                                ).execute
+                                ).execute()
                             ),
                             timeout=timeout
                         )
@@ -388,15 +379,14 @@ class GoogleDriveService:
                     except Exception as e:
                         logger.error(f"Error exporting Google Spreadsheet {file_id}: {e}")
                         return ""
-                
                 elif mime_type == 'application/vnd.google-apps.presentation':
                     try:
                         response = await asyncio.wait_for(
                             asyncio.to_thread(
-                                self.service.files().export(
+                                lambda: self.service.files().export(
                                     fileId=file_id,
                                     mimeType='text/plain'
-                                ).execute
+                                ).execute()
                             ),
                             timeout=timeout
                         )
@@ -407,7 +397,6 @@ class GoogleDriveService:
                     except Exception as e:
                         logger.error(f"Error exporting Google Presentation {file_id}: {e}")
                         return ""
-                
                 else:
                     logger.warning(f"Unsupported Google Workspace type: {mime_type}")
                     return ""
@@ -423,7 +412,7 @@ class GoogleDriveService:
                 try:
                     pdf_content = await asyncio.wait_for(
                         asyncio.to_thread(
-                            self.service.files().get_media(fileId=file_id).execute
+                            lambda: self.service.files().get_media(fileId=file_id).execute()
                         ),
                         timeout=timeout
                     )
@@ -444,12 +433,11 @@ class GoogleDriveService:
                 except Exception as e:
                     logger.error(f"Error processing PDF file: {str(e)}")
                     return ""
-                    
             elif mime_type.startswith('text/'):
                 try:
                     content = await asyncio.wait_for(
                         asyncio.to_thread(
-                            self.service.files().get_media(fileId=file_id).execute
+                            lambda: self.service.files().get_media(fileId=file_id).execute()
                         ),
                         timeout=timeout
                     )
@@ -460,15 +448,12 @@ class GoogleDriveService:
                 except UnicodeDecodeError:
                     logger.error(f"Error decoding text file {file_id}")
                     return ""
-            
             elif mime_type.startswith('image/'):
                 logger.info(f"Skipping image file {file_id} - OCR not yet implemented")
                 return ""
-                
             else:
                 logger.warning(f"Unsupported mime type: {mime_type}")
                 return ""
-                
         except Exception as e:
             logger.error(f"Error getting file content: {str(e)}")
             return ""

@@ -81,11 +81,8 @@ async def google_status(drive_service: GoogleDriveService = Depends(get_drive_se
     """
     Checks if authenticated with Google Drive.
     """
-    logger.debug("********** Starting auth status check *******")
     try:
-        logger.debug("About to check is_authenticated")
         is_authenticated = await drive_service.is_authenticated()
-        logger.debug(f"Authentication check result: {is_authenticated}")
         return {
             "isAuthenticated": is_authenticated,
             "userType": "klio",

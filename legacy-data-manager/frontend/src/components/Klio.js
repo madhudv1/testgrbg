@@ -72,7 +72,7 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
     const initializeConnection = async () => {
       try {
         const response = await fetch(`${config.apiBaseUrl}/api/v1/auth/google/status`, {
-          credentials: 'include'
+          ...config.fetchOptions
         });
         console.log('Initial connection check response:', response);
         const data = await response.json();
@@ -99,7 +99,7 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
     console.log('Checking connection status...');
     try {
       const response = await fetch(`${config.apiBaseUrl}/api/v1/auth/google/status`, {
-        credentials: 'include'
+        ...config.fetchOptions
       });
       console.log('Connection check response:', response);
       const data = await response.json();
@@ -167,10 +167,7 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
     try {
       setIsLoading(true);
       const response = await fetch(`${config.apiBaseUrl}/api/v1/drive/directories`, {
-        credentials: 'include',
-        headers: {
-          'Accept': 'application/json'
-        }
+        ...config.fetchOptions
       });
       
       console.log('Directories response:', response);
@@ -211,9 +208,10 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
       }
     } catch (error) {
       console.error('Error fetching directories:', error);
+      setIsConnected(false);
       setMessages(prev => [...prev, {
         type: 'assistant',
-        content: `Sorry, I encountered an error while trying to list directories: ${error.message}`
+        content: 'Failed to fetch directories. Please try connecting again.'
       }]);
     } finally {
       setIsLoading(false);
@@ -271,25 +269,23 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
       const data = await response.json();
       console.log('Raw analysis data received:', data);
       
+      // Calculate total sensitive documents across all age groups
+      const totalSensitiveDocuments = [
+        data.moreThanThreeYears?.total_sensitive || 0,
+        data.oneToThreeYears?.total_sensitive || 0,
+        data.lessThanOneYear?.total_sensitive || 0
+      ].reduce((sum, count) => sum + count, 0);
+      
       // Transform data to match expected structure
       const transformedData = {
         directory: directory,
-        staleDocuments: data.stale_documents || 0,
-        duplicateDocuments: data.duplicate_documents || 0,
-        sensitiveDocuments: data.sensitive_documents || 0,
+        docCount: data.processed_files || 0,
+        duplicateDocuments: data.total_duplicates || 0,
+        sensitiveDocuments: data.total_sensitive_files || 0,
         ageDistribution: {
-          moreThanThreeYears: {
-            types: transformFileTypes(data.moreThanThreeYears?.file_types),
-            risks: transformSensitiveInfo(data.moreThanThreeYears?.sensitive_info)
-          },
-          oneToThreeYears: {
-            types: transformFileTypes(data.oneToThreeYears?.file_types),
-            risks: transformSensitiveInfo(data.oneToThreeYears?.sensitive_info)
-          },
-          lessThanOneYear: {
-            types: transformFileTypes(data.lessThanOneYear?.file_types),
-            risks: transformSensitiveInfo(data.lessThanOneYear?.sensitive_info)
-          }
+          moreThanThreeYears: transformAgeGroup(data.moreThanThreeYears),
+          oneToThreeYears: transformAgeGroup(data.oneToThreeYears),
+          lessThanOneYear: transformAgeGroup(data.lessThanOneYear)
         }
       };
       
@@ -318,39 +314,63 @@ const Klio = ({ onCommand, onStatsUpdate }) => {
     }
   };
 
-  // Helper function to transform file types data
-  const transformFileTypes = (fileTypes) => {
-    if (!fileTypes) return {};
-    
-    const result = {};
-    for (const [type, files] of Object.entries(fileTypes)) {
-      if (Array.isArray(files)) {
-        const totalSize = files.reduce((total, file) => total + (parseInt(file.size) || 0), 0);
-        result[type] = {
-          count: files.length,
-          size: totalSize,
-          files: files // Keep the original files array
-        };
-      }
+  // Helper function to transform an age group's data
+  const transformAgeGroup = (groupData) => {
+    if (!groupData) {
+      return {
+        types: {},
+        risks: {},
+        totalSensitive: 0,
+        total_documents: 0
+      };
     }
-    return result;
-  };
 
-  // Helper function to transform sensitive info data
-  const transformSensitiveInfo = (sensitiveInfo) => {
-    if (!sensitiveInfo) return {};
-    
-    const result = {};
-    for (const [type, files] of Object.entries(sensitiveInfo)) {
-      if (Array.isArray(files)) {
-        result[type] = {
-          count: files.length,
-          files: files, // Keep the original files array
-          confidence: files.length > 0 ? files.reduce((sum, file) => sum + (file.confidence || 0), 0) / files.length : 0
-        };
-      }
+    // Transform file types
+    const types = {};
+    if (groupData.file_types) {
+      // Calculate total files for percentage
+      const totalFiles = Object.values(groupData.file_types)
+        .reduce((sum, files) => sum + (Array.isArray(files) ? files.length : 0), 0);
+
+      Object.entries(groupData.file_types).forEach(([type, files]) => {
+        if (Array.isArray(files)) {
+          types[type] = {
+            count: files.length,
+            size: files.reduce((sum, file) => sum + (parseInt(file.size) || 0), 0),
+            percentage: totalFiles > 0 ? Math.round((files.length / totalFiles) * 100) : 0,
+            files: files
+          };
+        }
+      });
     }
-    return result;
+
+    // Transform risks
+    const risks = {};
+    if (groupData.sensitive_info) {
+      // Calculate total findings for percentage
+      const totalFindings = Object.values(groupData.sensitive_info)
+        .reduce((sum, findings) => sum + (Array.isArray(findings) ? findings.length : 0), 0);
+
+      Object.entries(groupData.sensitive_info).forEach(([category, findings]) => {
+        if (Array.isArray(findings)) {
+          risks[category] = {
+            count: findings.length,
+            files: findings,
+            confidence: findings.length > 0 
+              ? findings.reduce((sum, finding) => sum + (finding.confidence || 0.8), 0) / findings.length 
+              : 0,
+            percentage: totalFindings > 0 ? Math.round((findings.length / totalFindings) * 100) : 0
+          };
+        }
+      });
+    }
+
+    return {
+      types,
+      risks,
+      totalSensitive: groupData.total_sensitive || 0,
+      total_documents: groupData.total_documents || 0
+    };
   };
 
   const handleClean = async () => {
