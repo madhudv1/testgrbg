@@ -9,8 +9,8 @@ import json
 import uuid
 import asyncio
 from ....core.auth import get_current_user
-from ....services.rule_based_classifier import RuleBasedClassifier
 from ....services.file_scanner_with_json import scan_files
+from ....services.scan_cache_service import ScanCacheService
 from asyncio import Lock, TimeoutError
 
 # Set up logging
@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 drive_service = GoogleDriveService()
+scan_cache = ScanCacheService()
 
 def determine_file_type(file: Dict) -> str:
     """
@@ -192,6 +193,12 @@ async def analyze_directory(
     drive_service: GoogleDriveService = Depends(get_current_user),
 ):
     try:
+        # Check cache first
+        cached_result = scan_cache.get_cached_result(folder_id)
+        if cached_result:
+            logger.info(f"Using cached result for directory {folder_id}")
+            return cached_result
+
         # Initialize response structure
         response = initialize_response_structure()
         
@@ -212,6 +219,11 @@ async def analyze_directory(
         try:
             response = await scan_files(source='gdrive', path_or_drive_id=folder_id)
             response["scan_complete"] = True
+            
+            # Cache the results
+            scan_cache.update_cache(folder_id, response)
+            logger.info(f"Cached scan results for directory {folder_id}")
+            
             return response
         except Exception as e:
             logger.error(f"Error scanning files: {e}")
@@ -246,15 +258,10 @@ async def categorize_directory(folder_id: str, page_size: int = 100):
 async def list_directories(
     drive_service: GoogleDriveService = Depends(get_current_user)
 ) -> List[Dict]:
-    """List all top-level directories in Google Drive."""
+    """List all directories in the user's drive."""
     try:
-        return await drive_service.list_directories()
-    except ValueError as e:
-        logger.error(f"Value error in list_directories: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+        directories = await drive_service.list_directories()
+        return directories
     except asyncio.TimeoutError:
         logger.error("Timeout listing directories")
         raise HTTPException(

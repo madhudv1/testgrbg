@@ -266,13 +266,14 @@ async def scan_files(source='local', path_or_drive_id='.', output_json='scan_rep
                 results[age_group]["total_documents"] += 1
                 results[age_group]["file_types"][file_type].append(filepath)
                 findings = scan_text(content)
-                if any(findings.values()):
+                if findings:
                     results[age_group]["total_sensitive"] += 1
                     results["total_sensitive_files"] += 1
                     for k, v in findings.items():
                         results[age_group]["sensitive_info"][k].extend(v)
                 results["processed_files"] += 1
-            except:
+            except Exception as e:
+                logger.error(f"Error processing file {filepath}: {str(e)}")
                 results["failed_files"].append(filepath)
 
     elif source == 'gdrive' and HAS_GOOGLE_API:
@@ -284,6 +285,9 @@ async def scan_files(source='local', path_or_drive_id='.', output_json='scan_rep
             files = await drive_service.list_directory(path_or_drive_id, recursive=True)
             results["total_files"] = len(files)
             logger.info(f"*** Total files found: {len(files)}")
+            
+            # Track unique sensitive files
+            sensitive_file_ids = set()
 
             for file in files:
                 try:
@@ -330,9 +334,12 @@ async def scan_files(source='local', path_or_drive_id='.', output_json='scan_rep
                             content = await drive_service.get_file_content(file_id)
                             if content:
                                 findings = scan_text(content)
-                                if findings:
-                                    results[age_group]["total_sensitive"] += 1
-                                    results["total_sensitive_files"] += 1
+                                if findings:  # If any sensitive content was found
+                                    if file_id not in sensitive_file_ids:  # Only count each file once
+                                        results[age_group]["total_sensitive"] += 1
+                                        sensitive_file_ids.add(file_id)
+                                        results["total_sensitive_files"] += 1
+                                    
                                     for k, v in findings.items():
                                         if v:  # Only add if there are findings
                                             results[age_group]["sensitive_info"][k].append({
@@ -350,23 +357,16 @@ async def scan_files(source='local', path_or_drive_id='.', output_json='scan_rep
                             logger.error(f"Error processing file content {name}: {str(e)}")
                     
                     results["processed_files"] += 1
-
                 except Exception as e:
-                    logger.error(f"Error with file {file.get('name', 'unknown')}: {str(e)}")
-                    results["failed_files"].append({
-                        "name": file.get('name', 'unknown'),
-                        "error": str(e)
-                    })
+                    logger.error(f"Error processing file {name}: {str(e)}")
+                    results["failed_files"].append(name)
 
+            logger.info(f"Completed processing {results['processed_files']} files")
+            logger.info(f"Found {len(sensitive_file_ids)} sensitive files")
+            results["scan_complete"] = True
+            
         except Exception as e:
-            raise ValueError(f"Error accessing Google Drive: {str(e)}")
+            logger.error(f"Error scanning files: {str(e)}")
+            raise
 
-    # Log final type counts
-    logger.info("File type counts:")
-    for file_type, count in type_counts.items():
-        logger.info(f"{file_type}: {count}")
-
-    results["scan_complete"] = True
-    with open(output_json, "w") as f:
-        json.dump(results, f, indent=2)
     return results

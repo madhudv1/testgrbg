@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1.endpoints import drive, chat, slack, auth
+from app.api.v1.endpoints import drive, chat, slack, auth, cache
 from app.core.config import settings
 from app.db.database import engine, Base
 from app.services.google_drive import GoogleDriveService
@@ -54,6 +54,7 @@ app.include_router(drive.router, prefix=settings.API_V1_STR + "/drive", tags=["d
 app.include_router(chat.router, prefix=settings.API_V1_STR + "/chat", tags=["chat"])
 app.include_router(slack.router, prefix=settings.API_V1_STR + "/slack", tags=["slack"])
 app.include_router(auth.router, prefix=settings.API_V1_STR + "/auth", tags=["auth"])
+app.include_router(cache.router, prefix=settings.API_V1_STR + "/cache", tags=["cache"])
 
 @app.get("/")
 async def root():

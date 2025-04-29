@@ -1,12 +1,16 @@
 from typing import Dict, List, Optional
 from .google_drive import GoogleDriveService
+from .scan_cache_service import ScanCacheService
+from .file_scanner_with_json import scan_files
 import logging
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
 class ChatService:
     def __init__(self, drive_service: GoogleDriveService):
         self.drive_service = drive_service
+        self.scan_cache = ScanCacheService()
         self.commands = {
             "help": self._handle_help,
             "list": self._handle_list,
@@ -14,7 +18,10 @@ class ChatService:
             "find": self._handle_find,
             "status": self._handle_status,
             "directories": self._handle_directories,
-            "categorize": self._handle_categorize
+            "categorize": self._handle_categorize,
+            "analyze": self._handle_analyze,
+            "summary": self._handle_summary,
+            "risks": self._handle_risks
         }
 
     async def process_command(self, command: str) -> Dict:
@@ -64,36 +71,41 @@ class ChatService:
 - status: Check authentication status
 - directories: List your top-level folders
 - categorize <folder_id>: Show a summary of a folder's contents
+- analyze: Analyze drive statistics
+- summary: Get a summary of drive statistics
+- risks: Identify potential risks in your drive
 
 Try any of these commands!"""
         }
 
     async def _handle_list(self, _: str) -> Dict:
         """Handle the list command."""
-        if not self.drive_service.is_authenticated():
+        if not await self.drive_service.is_authenticated():
             return {
                 "type": "text",
                 "content": "Please authenticate first using the /auth/url endpoint"
             }
         
         try:
-            files = self.drive_service.list_files(page_size=5)
-            if not files:
+            # Get directories from the API
+            directories = await self.drive_service.list_directories()
+            
+            if not directories:
                 return {
                     "type": "text",
-                    "content": "No files found in your drive."
+                    "content": "No directories found in your drive."
                 }
             
-            response = "Here are your recent files:\n"
-            for file in files:
-                response += f"- {file['name']} (Last modified: {file['modifiedTime']})\n"
+            response = "Available Directories 📁\n\n"
+            for directory in directories:
+                response += f"- {directory['name']} (ID: {directory['id']})\n"
             
             return {
                 "type": "text",
                 "content": response
             }
         except Exception as e:
-            logger.error(f"Error listing files: {str(e)}")
+            logger.error(f"Error listing directories: {str(e)}", exc_info=True)
             return {
                 "type": "text",
                 "content": f"Sorry, I encountered an error: {str(e)}"
@@ -182,14 +194,14 @@ Try any of these commands!"""
 
     async def _handle_directories(self, _: str) -> Dict:
         """Handle the directories command."""
-        if not self.drive_service.is_authenticated():
+        if not await self.drive_service.is_authenticated():
             return {
                 "type": "text",
                 "content": "Please authenticate first using the /auth/url endpoint"
             }
         
         try:
-            directories = self.drive_service.list_directories(page_size=100)
+            directories = await self.drive_service.list_directories()
             if not directories:
                 return {
                     "type": "text",
@@ -205,7 +217,7 @@ Try any of these commands!"""
                 "content": response
             }
         except Exception as e:
-            logger.error(f"Error listing directories: {str(e)}")
+            logger.error(f"Error listing directories: {str(e)}", exc_info=True)
             return {
                 "type": "text",
                 "content": f"Sorry, I encountered an error listing directories: {str(e)}"
@@ -255,4 +267,209 @@ Try any of these commands!"""
             return {
                 "type": "text",
                 "content": f"Sorry, I encountered an error categorizing the directory: {str(e)}"
-            } 
+            }
+
+    async def _handle_analyze(self, _: str) -> Dict:
+        """Handle the analyze command."""
+        return {
+            "type": "text",
+            "content": "Analyze command not implemented yet."
+        }
+
+    async def _handle_summary(self, _: str) -> Dict:
+        """Handle the summary command."""
+        return {
+            "type": "text",
+            "content": "Summary command not implemented yet."
+        }
+
+    async def _handle_risks(self, _: str) -> Dict:
+        """Handle the risks command."""
+        return {
+            "type": "text",
+            "content": "Risks command not implemented yet."
+        }
+
+    async def get_drive_stats(self) -> Dict:
+        """Get overall drive statistics."""
+        logger.info("Starting get_drive_stats")
+        if not await self.drive_service.is_authenticated():
+            logger.error("Not authenticated with Google Drive")
+            raise ValueError("Not authenticated with Google Drive")
+
+        try:
+            logger.info("Fetching files from Google Drive")
+            # Get all files
+            files = await self.drive_service.list_files(page_size=1000)
+            logger.info(f"Retrieved {len(files)} files from Google Drive")
+            
+            # Calculate statistics
+            total_files = len(files)
+            sensitive_files = 0
+            old_files = 0
+            total_size = 0
+            
+            # Calculate cutoff date for old files (3 years)
+            cutoff_date = datetime.utcnow() - timedelta(days=3*365)
+            
+            logger.info("Processing files for statistics")
+            for file in files:
+                # Calculate total size
+                if 'size' in file:
+                    total_size += int(file.get('size', 0))
+                
+                # Check for old files
+                modified_time = datetime.fromisoformat(file['modifiedTime'].rstrip('Z'))
+                if modified_time < cutoff_date:
+                    old_files += 1
+                
+                # Check for sensitive files (placeholder - implement actual detection)
+                if any(keyword in file['name'].lower() for keyword in ['password', 'secret', 'confidential']):
+                    sensitive_files += 1
+            
+            # Calculate storage usage percentage (placeholder - implement actual calculation)
+            storage_used_percentage = min((total_size / (1024 * 1024 * 1024)) * 100, 100)  # Assuming 1GB total storage
+            
+            stats = {
+                'total_files': total_files,
+                'sensitive_files': sensitive_files,
+                'old_files': old_files,
+                'storage_used_percentage': storage_used_percentage
+            }
+            logger.info(f"Calculated stats: {stats}")
+            return stats
+        except Exception as e:
+            logger.error(f"Error getting drive stats: {str(e)}", exc_info=True)
+            raise
+
+    async def analyze_directory(self, directory: str) -> Dict:
+        """Analyze a directory for file types and sensitive information."""
+        try:
+            # Check cache first
+            cached_result = self.scan_cache.get_cached_result(directory)
+            if cached_result:
+                logger.info(f"Using cached result for directory {directory}")
+                return cached_result
+
+            # Get files in directory
+            files = await self.drive_service.list_directory(directory, recursive=True)
+            
+            # Process files using the scanner
+            results = await scan_files(source='gdrive', path_or_drive_id=directory)
+            
+            # Cache the results
+            self.scan_cache.update_cache(directory, results)
+            logger.info(f"Cached scan results for directory {directory}")
+            
+            return results
+        except Exception as e:
+            logger.error(f"Error analyzing directory: {str(e)}", exc_info=True)
+            raise
+
+    def _calculate_storage_percentage(self, files: List[Dict]) -> float:
+        """Calculate storage usage percentage."""
+        total_size = sum(int(f.get('size', 0)) for f in files)
+        # Assuming 15GB free tier limit for Google Drive
+        storage_limit = 15 * 1024 * 1024 * 1024  
+        return min(round((total_size / storage_limit) * 100, 2), 100)
+
+    def _is_old_file(self, file: Dict) -> bool:
+        """Check if a file is older than 3 years."""
+        modified_time = datetime.fromisoformat(file['modifiedTime'].rstrip('Z'))
+        return (datetime.utcnow() - modified_time).days > 1095  # 3 years in days
+
+    def _summarize_file_types(self, results: Dict) -> Dict:
+        """Summarize file types across all age categories."""
+        summary = {}
+        for file_type in results['moreThanThreeYears']['file_types'].keys():
+            total = (len(results['moreThanThreeYears']['file_types'][file_type]) +
+                    len(results['oneToThreeYears']['file_types'][file_type]) +
+                    len(results['lessThanOneYear']['file_types'][file_type]))
+            if total > 0:
+                summary[file_type] = total
+        return summary
+
+    async def get_summary_stats(self, directory: str = None) -> Dict:
+        """Get summary statistics for a directory or entire drive."""
+        try:
+            # Check cache first
+            target_id = directory if directory else 'drive'
+            cached_result = self.scan_cache.get_cached_result(target_id)
+            if cached_result:
+                logger.info(f"Using cached result for {target_id}")
+                return cached_result
+
+            # Get files either from specific directory or entire drive
+            if directory:
+                files = await self.drive_service.list_directory(directory, recursive=True)
+            else:
+                # For entire drive, use list_files
+                files_response = await self.drive_service.list_files(page_size=1000)
+                files = files_response.get('files', [])
+
+            logger.info(f"Retrieved {len(files)} files for analysis")
+
+            # Process files using the scanner
+            results = await scan_files(source='gdrive', path_or_drive_id=directory if directory else 'drive')
+            
+            # Create a summary of the results
+            summary = {
+                'total_files': results['total_files'],
+                'sensitive_files': results['total_sensitive_files'],
+                'storage_used_percentage': self._calculate_storage_percentage(files),
+                'old_files': len([f for f in files if self._is_old_file(f)]),
+                'file_types': self._summarize_file_types(results),
+                'age_distribution': {
+                    'moreThanThreeYears': results['moreThanThreeYears']['total_documents'],
+                    'oneToThreeYears': results['oneToThreeYears']['total_documents'],
+                    'lessThanOneYear': results['lessThanOneYear']['total_documents']
+                },
+                'sensitive_info': {
+                    'pii': len(results['moreThanThreeYears']['sensitive_info']['pii'] +
+                              results['oneToThreeYears']['sensitive_info']['pii'] +
+                              results['lessThanOneYear']['sensitive_info']['pii']),
+                    'financial': len(results['moreThanThreeYears']['sensitive_info']['financial'] +
+                                   results['oneToThreeYears']['sensitive_info']['financial'] +
+                                   results['lessThanOneYear']['sensitive_info']['financial']),
+                    'legal': len(results['moreThanThreeYears']['sensitive_info']['legal'] +
+                               results['oneToThreeYears']['sensitive_info']['legal'] +
+                               results['lessThanOneYear']['sensitive_info']['legal']),
+                    'confidential': len(results['moreThanThreeYears']['sensitive_info']['confidential'] +
+                                      results['oneToThreeYears']['sensitive_info']['confidential'] +
+                                      results['lessThanOneYear']['sensitive_info']['confidential'])
+                }
+            }
+
+            # Cache the results
+            self.scan_cache.update_cache(target_id, summary)
+            logger.info(f"Cached summary stats for {target_id}")
+            
+            return summary
+
+        except Exception as e:
+            logger.error(f"Error getting summary stats: {str(e)}", exc_info=True)
+            raise
+
+    async def analyze_risks(self, directory: str) -> Dict:
+        """Analyze risks in a directory."""
+        try:
+            # Check cache first
+            cached_result = self.scan_cache.get_cached_result(directory)
+            if cached_result:
+                logger.info(f"Using cached result for directory {directory}")
+                return cached_result
+
+            # Get files in directory
+            files = await self.drive_service.list_directory(directory, recursive=True)
+            
+            # Process files for risk analysis
+            results = await scan_files(source='gdrive', path_or_drive_id=directory)
+            
+            # Cache the results
+            self.scan_cache.update_cache(directory, results)
+            logger.info(f"Cached risk analysis for directory {directory}")
+            
+            return results
+        except Exception as e:
+            logger.error(f"Error analyzing risks: {str(e)}", exc_info=True)
+            raise 

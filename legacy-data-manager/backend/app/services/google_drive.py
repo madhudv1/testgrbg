@@ -98,8 +98,8 @@ class GoogleDriveService:
             logger.error(f"Error checking authentication: {e}", exc_info=True)
             return False
 
-    async def list_files(self, page_size: int = 100) -> List[Dict]:
-        """List files from Google Drive."""
+    async def list_files(self, page_size: int = 100, page_token: str = None) -> Dict:
+        """List files from Google Drive with pagination support."""
         await self.ensure_service()
         
         try:
@@ -107,10 +107,11 @@ class GoogleDriveService:
                 results = await asyncio.to_thread(
                     lambda: self.service.files().list(
                         pageSize=page_size,
-                        fields="files(id, name, mimeType, modifiedTime, owners, lastModifyingUser)"
+                        pageToken=page_token,
+                        fields="nextPageToken,files(id, name, mimeType, modifiedTime, owners, lastModifyingUser, size)"
                     ).execute()
                 )
-            return results.get('files', [])
+            return results
         except asyncio.TimeoutError:
             logger.error("Timeout listing files")
             raise ValueError("Timeout listing files")
@@ -610,4 +611,3 @@ class GoogleDriveService:
         }
         
         logger.info(f"Finished categorization for folder ID: {folder_id}")
-        return categories 
