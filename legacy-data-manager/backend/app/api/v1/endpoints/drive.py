@@ -3,15 +3,15 @@ from typing import Dict, List, Optional
 from ....services.google_drive import GoogleDriveService
 from ....core.config import settings
 import logging
-from ....services.genai_service import GenAIService
 from datetime import datetime, timezone, timedelta
-from ....services.local_llm_service import LocalLLMService
-from ....services.rate_limiter import LLMRateLimiter
 from fastapi.responses import RedirectResponse
 import json
 import uuid
 import asyncio
 from ....core.auth import get_current_user
+from ....services.file_scanner_with_json import scan_files
+from ....services.scan_cache_service import ScanCacheService
+from asyncio import Lock, TimeoutError
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -19,11 +19,27 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 drive_service = GoogleDriveService()
-genai_service = GenAIService()
+scan_cache = ScanCacheService()
 
-# Initialize services
-local_llm = LocalLLMService()
-rate_limiter = LLMRateLimiter()
+def determine_file_type(file: Dict) -> str:
+    """
+    Determine the type of file based on its MIME type.
+    Returns one of: "documents", "spreadsheets", "presentations", "pdfs", "images", "others"
+    """
+    mime_type = file.get('mimeType', '')
+    
+    if mime_type == 'application/pdf':
+        return 'pdfs'
+    elif mime_type.startswith('image/'):
+        return 'images'
+    elif mime_type in ['application/vnd.google-apps.document', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']:
+        return 'documents'
+    elif mime_type in ['application/vnd.google-apps.spreadsheet', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']:
+        return 'spreadsheets'
+    elif mime_type in ['application/vnd.google-apps.presentation', 'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation']:
+        return 'presentations'
+    else:
+        return 'others'
 
 def categorize_file_by_age(file: Dict) -> str:
     """
@@ -109,166 +125,119 @@ async def list_directory_files(folder_id: str, page_size: int = 100):
         logger.error(f"Error listing directory files: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+def initialize_response_structure():
+    return {
+        "moreThanThreeYears": {
+            "total_documents": 0,
+            "total_sensitive": 0,
+            "file_types": {
+                "documents": [],
+                "spreadsheets": [],
+                "presentations": [],
+                "pdfs": [],
+                "images": [],
+                "others": []
+            },
+            "sensitive_info": {
+                "pii": [],
+                "financial": [],
+                "legal": [],
+                "confidential": []
+            }
+        },
+        "oneToThreeYears": {
+            "total_documents": 0,
+            "total_sensitive": 0,
+            "file_types": {
+                "documents": [],
+                "spreadsheets": [],
+                "presentations": [],
+                "pdfs": [],
+                "images": [],
+                "others": []
+            },
+            "sensitive_info": {
+                "pii": [],
+                "financial": [],
+                "legal": [],
+                "confidential": []
+            }
+        },
+        "lessThanOneYear": {
+            "total_documents": 0,
+            "total_sensitive": 0,
+            "file_types": {
+                "documents": [],
+                "spreadsheets": [],
+                "presentations": [],
+                "pdfs": [],
+                "images": [],
+                "others": []
+            },
+            "sensitive_info": {
+                "pii": [],
+                "financial": [],
+                "legal": [],
+                "confidential": []
+            }
+        },
+        "scan_complete": False,
+        "processed_files": 0,
+        "total_files": 0,
+        "failed_files": []
+    }
+
 @router.post("/directories/{folder_id}/analyze")
 async def analyze_directory(
     folder_id: str,
-    recursive: bool = True,
-    drive_service: GoogleDriveService = Depends(get_current_user)
+    drive_service: GoogleDriveService = Depends(get_current_user),
 ):
-    """
-    Analyze a directory and its contents, optionally including subdirectories if recursive=True.
-    Returns statistics about file types and sensitive content organized by age categories.
-    """
     try:
-        # Initialize the local LLM service
-        local_llm = LocalLLMService()
-        
-        # Get all files in the directory
-        files = await drive_service.list_directory(folder_id, recursive=recursive)
-        
-        # Initialize response structure
-        response = {
-            "moreThanThreeYears": {
-                "total_documents": 0,
-                "total_sensitive": 0,
-                "file_types": {
-                    "documents": [],
-                    "spreadsheets": [],
-                    "presentations": [],
-                    "pdfs": [],
-                    "images": [],
-                    "others": []
-                },
-                "sensitive_info": {
-                    "email": [],
-                    "ssn": [],
-                    "phone": [],
-                    "credit_card": [],
-                    "ip_address": []
-                }
-            },
-            "oneToThreeYears": {
-                "total_documents": 0,
-                "total_sensitive": 0,
-                "file_types": {
-                    "documents": [],
-                    "spreadsheets": [],
-                    "presentations": [],
-                    "pdfs": [],
-                    "images": [],
-                    "others": []
-                },
-                "sensitive_info": {
-                    "email": [],
-                    "ssn": [],
-                    "phone": [],
-                    "credit_card": [],
-                    "ip_address": []
-                }
-            },
-            "lessThanOneYear": {
-                "total_documents": 0,
-                "total_sensitive": 0,
-                "file_types": {
-                    "documents": [],
-                    "spreadsheets": [],
-                    "presentations": [],
-                    "pdfs": [],
-                    "images": [],
-                    "others": []
-                },
-                "sensitive_info": {
-                    "email": [],
-                    "ssn": [],
-                    "phone": [],
-                    "credit_card": [],
-                    "ip_address": []
-                }
-            },
-            "scan_complete": False
-        }
-        
-        # Process each file
-        for file in files:
-            # Categorize by age
-            age_category = categorize_file_by_age(file)
-            
-            # Increment total documents for this age category
-            response[age_category]["total_documents"] += 1
-            
-            # Categorize file type and add to appropriate list
-            file_type = categorize_file_type(file)
-            response[age_category]["file_types"][file_type].append(file)
-            
-            try:
-                # Get file content and analyze with LLM
-                content = await drive_service.get_file_content(file['id'])
-                if content:
-                    analysis = await local_llm.analyze_text(content)
-                    if analysis.is_sensitive:
-                        # Increment sensitive document count
-                        response[age_category]["total_sensitive"] += 1
-                        
-                        # Add file to appropriate sensitive categories
-                        sensitive_file = {
-                            'file': file,
-                            'confidence': analysis.confidence,
-                            'explanation': analysis.explanation,
-                            'categories': analysis.categories  # List of detected sensitive categories
-                        }
-                        
-                        # Add to each detected sensitive category
-                        for category in analysis.categories:
-                            if category in response[age_category]["sensitive_info"]:
-                                response[age_category]["sensitive_info"][category].append(sensitive_file)
-                            
-            except Exception as e:
-                logger.error(f"Error analyzing file {file['name']}: {e}")
-                continue
-        
-        response["scan_complete"] = True
-        return response
-        
-    except ValueError as e:
-        logger.error(f"Value error in analyze_directory: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-    except asyncio.TimeoutError:
-        logger.error("Timeout analyzing directory")
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail="Operation timed out"
-        )
-    except Exception as e:
-        logger.error(f"Error analyzing directory: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+        # Check cache first
+        cached_result = scan_cache.get_cached_result(folder_id)
+        if cached_result:
+            logger.info(f"Using cached result for directory {folder_id}")
+            return cached_result
 
-def categorize_file_type(file: Dict) -> str:
-    """
-    Categorize a file based on its MIME type or extension.
-    Returns one of: documents, spreadsheets, presentations, pdfs, images, others
-    """
-    mime_type = file.get('mimeType', '').lower()
-    name = file.get('name', '').lower()
-    
-    if 'document' in mime_type or name.endswith(('.doc', '.docx')):
-        return "documents"
-    elif 'spreadsheet' in mime_type or name.endswith(('.xls', '.xlsx', '.csv')):
-        return "spreadsheets"
-    elif 'presentation' in mime_type or name.endswith(('.ppt', '.pptx')):
-        return "presentations"
-    elif 'pdf' in mime_type or name.endswith('.pdf'):
-        return "pdfs"
-    elif ('image' in mime_type or 
-          any(name.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp'])):
-        return "images"
-    else:
-        return "others"
+        # Initialize response structure
+        response = initialize_response_structure()
+        
+        # Get files in directory
+        try:
+            files = await drive_service.list_directory(folder_id, recursive=True)
+        except Exception as e:
+            logger.error(f"Error listing directory: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error listing directory: {str(e)}"
+            )
+            
+        if not files:
+            return response
+        
+        # Process files using the scanner
+        try:
+            response = await scan_files(source='gdrive', path_or_drive_id=folder_id)
+            response["scan_complete"] = True
+            
+            # Cache the results
+            scan_cache.update_cache(folder_id, response)
+            logger.info(f"Cached scan results for directory {folder_id}")
+            
+            return response
+        except Exception as e:
+            logger.error(f"Error scanning files: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error scanning files: {str(e)}"
+            )
+        
+    except Exception as e:
+        logger.error(f"Error analyzing directory: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error analyzing directory: {str(e)}"
+        )
 
 @router.get("/directories/{folder_id}/categorize")
 async def categorize_directory(folder_id: str, page_size: int = 100):
@@ -289,15 +258,10 @@ async def categorize_directory(folder_id: str, page_size: int = 100):
 async def list_directories(
     drive_service: GoogleDriveService = Depends(get_current_user)
 ) -> List[Dict]:
-    """List all top-level directories in Google Drive."""
+    """List all directories in the user's drive."""
     try:
-        return await drive_service.list_directories()
-    except ValueError as e:
-        logger.error(f"Value error in list_directories: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+        directories = await drive_service.list_directories()
+        return directories
     except asyncio.TimeoutError:
         logger.error("Timeout listing directories")
         raise HTTPException(

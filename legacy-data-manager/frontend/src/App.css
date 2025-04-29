@@ -415,18 +415,18 @@ body {
   color: var(--text-secondary);
 }
 
-.type-stats .count {
+.type-stats .type-count {
   min-width: 80px;
   color: var(--text-color);
   font-weight: 500;
 }
 
-.type-stats .size {
-  min-width: 80px;
+.type-stats .type-size {
+  min-width: 120px;
   color: var(--purple-progress);
 }
 
-.type-stats .percentage {
+.type-stats .type-percentage {
   min-width: 60px;
   font-weight: 500;
   color: var(--text-color);
@@ -511,10 +511,11 @@ body {
 }
 
 .pii-badge {
-  font-size: 0.75rem;
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
+  font-size: 0.75rem;
   font-weight: 500;
+  margin-left: 0.5rem;
 }
 
 .pii-badge.high {
@@ -528,7 +529,7 @@ body {
   opacity: 0.8;
 }
 
-/* Ensure bars are visible */
+/* Risk Categories - matching file types styling */
 .type-bars {
   display: flex;
   flex-direction: column;
@@ -543,7 +544,17 @@ body {
   border-radius: 6px;
   transition: background-color 0.2s ease;
   background: var(--background-secondary);
-  width: 100%;
+}
+
+.type-bar:hover {
+  background: var(--background-hover);
+}
+
+.type-label {
+  width: 120px;
+  font-size: 14px;
+  color: var(--text-color);
+  font-weight: 500;
 }
 
 .bar-container {
@@ -553,8 +564,44 @@ body {
   border-radius: 4px;
   overflow: hidden;
   margin: 0 1.5rem;
-  position: relative;
-  min-width: 100px;
+}
+
+.bar {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.type-stats {
+  display: flex;
+  gap: 1.5rem;
+  min-width: 240px;
+  text-align: right;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.type-stats .type-count {
+  min-width: 80px;
+  color: var(--text-color);
+  font-weight: 500;
+}
+
+.type-stats .type-size {
+  min-width: 120px;
+  color: var(--purple-progress);
+}
+
+.type-stats .type-percentage {
+  min-width: 60px;
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+/* Remove old risk category styles */
+.risk-categories,
+.risk-category,
+.pii-badge {
+  display: none;
 }
 
 /* Responsive Design */

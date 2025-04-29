@@ -12,58 +12,21 @@ function App() {
   const [activeTab, setActiveTab] = useState('moreThanThreeYears');
   const [typeSort, setTypeSort] = useState('count'); // 'count' or 'size'
   const [stats, setStats] = useState({
-    staleDocuments: 0,
+    docCount: 0,
     duplicateDocuments: 0,
     sensitiveDocuments: 0,
     ageDistribution: {
-      // Dummy data for development
       moreThanThreeYears: {
-        types: {
-          documents: { count: 45, size: 15000000, percentage: 30 },
-          spreadsheets: { count: 30, size: 8000000, percentage: 20 },
-          presentations: { count: 15, size: 20000000, percentage: 10 },
-          pdfs: { count: 30, size: 25000000, percentage: 20 },
-          images: { count: 15, size: 12000000, percentage: 10 },
-          others: { count: 15, size: 5000000, percentage: 10 }
-        },
-        risks: {
-          pii: { count: 20, size: 5000000, percentage: 40 },
-          financial: { count: 15, size: 4000000, percentage: 30 },
-          legal: { count: 10, size: 3000000, percentage: 20 },
-          confidential: { count: 5, size: 1000000, percentage: 10 }
-        }
+        types: {},
+        risks: {}
       },
       oneToThreeYears: {
-        types: {
-          documents: { count: 30, size: 10000000, percentage: 25 },
-          spreadsheets: { count: 25, size: 6000000, percentage: 20 },
-          presentations: { count: 20, size: 15000000, percentage: 15 },
-          pdfs: { count: 25, size: 20000000, percentage: 20 },
-          images: { count: 15, size: 10000000, percentage: 12 },
-          others: { count: 10, size: 4000000, percentage: 8 }
-        },
-        risks: {
-          pii: { count: 15, size: 4000000, percentage: 35 },
-          financial: { count: 12, size: 3000000, percentage: 28 },
-          legal: { count: 10, size: 2500000, percentage: 23 },
-          confidential: { count: 6, size: 1500000, percentage: 14 }
-        }
+        types: {},
+        risks: {}
       },
       lessThanOneYear: {
-        types: {
-          documents: { count: 20, size: 8000000, percentage: 22 },
-          spreadsheets: { count: 18, size: 5000000, percentage: 20 },
-          presentations: { count: 15, size: 12000000, percentage: 16 },
-          pdfs: { count: 20, size: 18000000, percentage: 22 },
-          images: { count: 12, size: 9000000, percentage: 13 },
-          others: { count: 7, size: 3000000, percentage: 7 }
-        },
-        risks: {
-          pii: { count: 10, size: 3000000, percentage: 30 },
-          financial: { count: 8, size: 2500000, percentage: 25 },
-          legal: { count: 8, size: 2000000, percentage: 25 },
-          confidential: { count: 6, size: 1500000, percentage: 20 }
-        }
+        types: {},
+        risks: {}
       }
     }
   });
@@ -136,25 +99,16 @@ function App() {
     }
   };
 
-  // MV TBD compare 
   const handleStatsUpdate = (newStats) => {
-    console.log('Received new stats:', newStats);
+    console.log('Received new stats in App.js:', newStats);
     
-    setStats(prevStats => {
-      // Create updated stats object with the new structure
-      const updatedStats = {
-        ...prevStats,
-        totalFiles: newStats.total_files,
-        ageDistribution: {
-          lessThanOneYear: newStats.ageDistribution?.lessThanOneYear || prevStats.ageDistribution.lessThanOneYear,
-          oneToThreeYears: newStats.ageDistribution?.oneToThreeYears || prevStats.ageDistribution.oneToThreeYears,
-          moreThanThreeYears: newStats.ageDistribution?.moreThanThreeYears || prevStats.ageDistribution.moreThanThreeYears
-        }
-      };
-      
-      console.log('Updated stats:', updatedStats);
-      return updatedStats;
-    });
+    // Update selected directory if provided
+    if (newStats.directory) {
+      setSelectedDirectory(newStats.directory);
+    }
+    
+    // Simply update the stats with the pre-transformed data
+    setStats(newStats);
   };
 
   const formatBytes = (bytes) => {
@@ -223,8 +177,8 @@ function App() {
                   <div 
                     className="bar" 
                     style={{ 
-                      width: `${percentage}%`,
-                      backgroundColor: fileTypeColors[type],
+                      width: 1, //`${percentage}%`,
+                      backgroundColor: fileTypeColors[type]|| '#757575',
                       opacity: 0.85
                     }}
                   ></div>
@@ -256,7 +210,7 @@ function App() {
     const sensitiveColor = '#DB4437'; // Red
     const cleanColor = '#0F9D58'; // Green
 
-    return (
+  return (
       <div className="risk-bars"> {/* Use a specific class */} 
         <div className="risk-bar"> {/* Class for individual bar row */} 
           <span className="risk-label">Sensitive</span>
@@ -296,111 +250,56 @@ function App() {
     );
   };
 
-  /* MV Original
-  const renderAgeSection = (data, title) => {
-    if (!data) return null;
+  // Helper function to group findings by their primary category
+  const groupFindingsByCategory = (risks) => {
+    const groupedRisks = {
+      pii: { count: 0, items: [], confidence: 0 },
+      financial: { count: 0, items: [], confidence: 0 },
+      legal: { count: 0, items: [], confidence: 0 },
+      confidential: { count: 0, items: [], confidence: 0 }
+    };
 
-    return (
-      <div className="age-section">
-        <h3>{title}</h3>
-        
-        {/* Types Section *}
-        <div className="section-content">
-          <h4>File Types</h4>
-          <div className="type-bars">
-            {Object.entries(data.types).map(([type, stats]) => (
-              <div key={type} className="type-bar">
-                <span className="type-label">{type.charAt(0).toUpperCase() + type.slice(1)}</span>
-                <div className="bar-container">
-                  <div 
-                    className="bar" 
-                    style={{ 
-                      width: `${stats.percentage}%`,
-                      backgroundColor: fileTypeColors[type],
-                      opacity: 0.85
-                    }}
-                  ></div>
-                </div>
-                <div className="type-stats">
-                  <span className="type-count">{stats.count} files</span>
-                  <span className="type-size">{formatBytes(stats.size)}</span>
-                  <span className="type-percentage">{stats.percentage}%</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+    // Process each risk entry
+    Object.entries(risks).forEach(([type, info]) => {
+      // Skip if no info or no count
+      if (!info || !info.count) return;
 
-        {/* Risks Section *}
-        <div className="section-content">
-          <h4>Risks</h4>
-          <div className="risk-bars">
-            {Object.entries(data.risks).map(([risk, stats]) => (
-              <div key={risk} className="risk-bar">
-                <span className="risk-label">{risk.charAt(0).toUpperCase() + risk.slice(1)}</span>
-                <div className="bar-container">
-                  <div 
-                    className="bar" 
-                    style={{ 
-                      width: `${stats.percentage}%`,
-                      backgroundColor: '#DB4437',
-                      opacity: 0.85
-                    }}
-                  ></div>
-                </div>
-                <div className="risk-stats">
-                  <span className="risk-count">{stats.count} files</span>
-                  <span className="risk-size">{formatBytes(stats.size)}</span>
-                  <span className="risk-percentage">{stats.percentage}%</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  };*/
+      // Determine the category based on the type
+      let category = 'confidential'; // default category
+      if (type.includes('pii') || type.includes('email') || type.includes('phone') || type.includes('address')) {
+        category = 'pii';
+      } else if (type.includes('financial') || type.includes('bank') || type.includes('credit')) {
+        category = 'financial';
+      } else if (type.includes('legal') || type.includes('contract') || type.includes('agreement')) {
+        category = 'legal';
+      }
+
+      // Add to the appropriate category
+      groupedRisks[category].count += info.count;
+      groupedRisks[category].items.push({
+        type: type,
+        count: info.count,
+        confidence: info.confidence || 80,
+        files: info.files || []
+      });
+
+      // Update category confidence
+      if (info.confidence) {
+        groupedRisks[category].confidence = 
+          (groupedRisks[category].confidence * (groupedRisks[category].items.length - 1) + info.confidence) / 
+          groupedRisks[category].items.length;
+      }
+    });
+
+    return groupedRisks;
+  };
 
   const renderAgeSection = (data, title) => {    
     if (!data) {
-      console.log('No data provided to renderAgeSection');
       return null;
     }
 
-    // Calculate total PII items in this age category
-    const totalPiiCount = Object.values(data.risks || {}).reduce((sum, risk) => 
-      sum + (risk.count || 0), 0
-    );
-
-    // Calculate percentages for PII items
-    const piiData = { ...data.risks };
-    if (totalPiiCount > 0) {
-      Object.keys(piiData).forEach(type => {
-        if (piiData[type]) {
-          piiData[type].percentage = Math.round((piiData[type].count / totalPiiCount) * 100);
-        }
-      });
-    }
-
-    // Colors for different PII types
-    const piiColors = {
-      //pii (red #FF6B6B)
-      pii: '#FF6B6B',      // Coral Red
-      email: '#FF6B6B',    // Coral Red
-
-      //financial (mint #A8E6CF)
-      financial: '#A8E6CF',    // Mint
-      credit_card: '#A8E6CF',  // Mint
-      
-      //confidential (orange #FF9F43)
-      confidential: '#FF9F43',  // Orange
-      ip_address: '#FF9F43',    // Orange
-      
-      //legal (blue #4834D4)
-      legal: '#4834D4',    // Blue
-      ssn: '#4834D4',      // Blue
-      phone: '#4834D4',    // Blue
-    };
+    const { types = {}, risks = {} } = data;
 
     return (
       <div className="age-section">
@@ -410,8 +309,10 @@ function App() {
           <div className="section-content">
             <h4>File Types</h4>
             <div className="type-bars">
-              {Object.entries(data.types || {}).map(([type, stats]) => {
-                return (
+              {Object.entries(types)
+                .filter(([_, stats]) => stats.count > 0)
+                .sort((a, b) => b[1].count - a[1].count)
+                .map(([type, stats]) => (
                   <div key={type} className="type-bar">
                     <span className="type-label">{type.charAt(0).toUpperCase() + type.slice(1)}</span>
                     <div className="bar-container">
@@ -419,60 +320,110 @@ function App() {
                         className="bar" 
                         style={{ 
                           width: `${stats.percentage}%`,
-                          backgroundColor: fileTypeColors[type],
-                          opacity: 0.85
+                          backgroundColor: fileTypeColors[type] || '#757575'
                         }}
                       ></div>
                     </div>
                     <div className="type-stats">
-                      <span className="type-count">{stats.count || 0} files</span>
+                      <span className="type-count">{stats.count} files</span>
                       <span className="type-size">{formatBytes(stats.size || 0)}</span>
-                      <span className="type-percentage">{stats.percentage || 0}%</span>
+                      <span className="type-percentage">{stats.percentage.toFixed(1)}%</span>
                     </div>
                   </div>
-                );
-              })}
+                ))}
             </div>
           </div>
 
-          {/* PII Section */}
+          {/* Risks Section */}
           <div className="section-content">
-            <h4>Risk {totalPiiCount > 0 && 
-              <span className="pii-total">({totalPiiCount} items found)</span>
-            }</h4>
+            <h4>Risk Categories</h4>
             <div className="type-bars">
-              {Object.entries(piiData || {}).map(([type, info]) => {
-                if (info && info.count > 0) {
+              {Object.entries(risks)
+                .filter(([_, stats]) => stats.count > 0)
+                .sort((a, b) => b[1].count - a[1].count)
+                .map(([category, stats]) => {
+                  const riskColors = {
+                    pii: '#e74c3c',
+                    financial: '#f39c12',
+                    legal: '#8e44ad',
+                    confidential: '#c0392b'
+                  };
+                  
                   return (
-                    <div key={type} className="type-bar">
+                    <div key={category} className="type-bar">
                       <span className="type-label">
-                        {type.replace(/_/g, ' ').toUpperCase()}
+                        {category.charAt(0).toUpperCase() + category.slice(1)}
                       </span>
                       <div className="bar-container">
                         <div 
                           className="bar" 
                           style={{ 
-                            width: `${info.percentage}%`,
-                            backgroundColor: piiColors[type] || '#6C5CE7',
-                            opacity: 0.85
+                            width: `${stats.percentage}%`,
+                            backgroundColor: riskColors[category] || '#757575'
                           }}
                         ></div>
                       </div>
                       <div className="type-stats">
-                        <span className="type-count">{info.count} found</span>
-                        <span className={`pii-badge ${info.confidence >= 0.9 ? 'high' : 'medium'}`}>
-                          {Math.round((info.confidence || 0) * 100)}%
-                        </span>
-                        <span className="type-percentage">{info.percentage}%</span>
+                        <span className="type-count">{stats.count} files</span>
+                        <span className="type-percentage">{stats.percentage.toFixed(1)}%</span>
                       </div>
                     </div>
                   );
-                }
-                return null;
-              }).filter(Boolean)}
+                })}
             </div>
           </div>
         </div>
+      </div>
+    );
+  };
+
+  const RiskCategory = ({ category, findings }) => {
+    const totalFindings = findings.reduce((sum, f) => sum + f.count, 0);
+    const percentage = Math.min(totalFindings * 10, 100); // Cap at 100%
+    
+    const riskColors = {
+      pii: '#e74c3c',
+      financial: '#f39c12',
+      legal: '#8e44ad',
+      confidential: '#c0392b'
+    };
+    
+    return (
+      <div className="type-bar">
+        <span className="type-label">
+          {category.charAt(0).toUpperCase() + category.slice(1)}
+        </span>
+        <div className="bar-container">
+          <div 
+            className="bar" 
+            style={{ 
+              width: `${percentage}%`,
+              backgroundColor: riskColors[category]
+            }}
+          ></div>
+        </div>
+        <div className="type-stats">
+          <span className="type-count">{totalFindings} files</span>
+          <span className="type-percentage">{percentage.toFixed(1)}%</span>
+        </div>
+      </div>
+    );
+  };
+
+  const RiskCategories = ({ findings }) => {
+    const groupedFindings = groupFindingsByCategory(findings);
+    
+    return (
+      <div className="type-bars">
+        {Object.entries(groupedFindings)
+          .filter(([_, data]) => data.count > 0)
+          .map(([category, data]) => (
+            <RiskCategory 
+              key={category} 
+              category={category} 
+              findings={data.items} 
+            />
+          ))}
       </div>
     );
   };
@@ -485,14 +436,14 @@ function App() {
         return renderAgeSection(stats.ageDistribution?.oneToThreeYears, 'Files 1-3 years old');
       case 'lessThanOneYear':
         return renderAgeSection(stats.ageDistribution?.lessThanOneYear, 'Files < 1 year old');
-      case 'type':
-        return renderFileTypeContent();
-      case 'owner':
-        return <div className="tab-content">Ownership analysis coming soon</div>;
-      case 'usage':
-        return <div className="tab-content">Usage analysis coming soon</div>;
-      case 'risk':
-        return renderRiskContent();
+      //case 'type':
+      //  return renderFileTypeContent();
+      //case 'owner':
+      //  return <div className="tab-content">Ownership analysis coming soon</div>;
+      //case 'usage':
+      //  return <div className="tab-content">Usage analysis coming soon</div>;
+      //case 'risk':
+      //  return renderRiskContent();
       default:
         return null;
     }
@@ -512,21 +463,14 @@ function App() {
               <div className="app-content">
                 <div className="dashboard-section">
                   <div className="document-overview">
-                    <h2>Document overview</h2>
+                    <h2>Scanning {selectedDirectory ? `: ${selectedDirectory.name}` : ''}</h2>
                     <div className="stats-grid">
-                      <div className="stat-card" title="Documents that haven't been accessed in the last 6 months">
+                      <div className="stat-card" title="Total documents in this drive">
                         <div className="stat-number">
-                          {stats.staleDocuments.toLocaleString()}
-                          {stats.staleDocuments > 0 && <span className="trend-up">↑</span>}
+                          {stats.docCount.toLocaleString()}
+                          {stats.docCount > 0 && <span className="trend-up">↑</span>}
                         </div>
-                        <div className="stat-label">Stale documents</div>
-                      </div>
-                      <div className="stat-card" title="Documents with similar content or identical names">
-                        <div className="stat-number">
-                          {stats.duplicateDocuments.toLocaleString()}
-                          {stats.duplicateDocuments > 0 && <span className="trend-up">↑</span>}
-                        </div>
-                        <div className="stat-label">Duplicate documents</div>
+                        <div className="stat-label">Files scanned</div>
                       </div>
                       <div className="stat-card" title="Documents that may contain sensitive information">
                         <div className="stat-number">
@@ -535,6 +479,14 @@ function App() {
                         </div>
                         <div className="stat-label">Sensitive documents</div>
                       </div>
+                      <div className="stat-card" title="Documents with similar content or identical names">
+                        <div className="stat-number">
+                          {stats.duplicateDocuments.toLocaleString()}
+                          {stats.duplicateDocuments > 0 && <span className="trend-up">↑</span>}
+                        </div>
+                        <div className="stat-label">Duplicate documents</div>
+                      </div>
+                      
                     </div>
 
                     <div className="age-distribution">
@@ -612,7 +564,7 @@ function App() {
                   />
                 </div>
               </div>
-            </div>
+    </div>
           }
         />
       </Routes>
