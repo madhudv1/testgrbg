@@ -5,6 +5,7 @@ import DirectoryList from './components/DirectoryList';
 import DirectoryExplorer from './components/DirectoryExplorer';
 import Klio from './components/Klio';
 import SensitiveContent from './components/SensitiveContent';
+import FileCategoryDetails from './components/FileCategoryDetails';
 import './App.css';
 import config from './config';
 
@@ -120,6 +121,18 @@ function AppContent() {
   const handleViewDetails = (category) => {
     // Navigate with current state
     navigate(`/sensitive-content/${activeTab}/${category}`, {
+      state: {
+        selectedDirectory,
+        activeTab,
+        stats,
+        returnTo: location.pathname,
+        directoryId: selectedDirectory?.id
+      }
+    });
+  };
+
+  const handleViewFileCategoryDetails = (fileType) => {
+    navigate(`/file-category/${activeTab}/${fileType}`, {
       state: {
         selectedDirectory,
         activeTab,
@@ -361,7 +374,12 @@ function AppContent() {
                   others: '#757575'
                 };
                 return (
-                  <div key={type} className="type-bar">
+                  <div
+                    key={type}
+                    className="type-bar clickable-type-bar"
+                    onClick={() => handleViewFileCategoryDetails(type)}
+                    style={{ cursor: 'pointer' }}
+                  >
                     <span className="type-label">
                       {type.charAt(0).toUpperCase() + type.slice(1)}
                     </span>
@@ -504,6 +522,7 @@ function AppContent() {
     <Routes>
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/sensitive-content/:ageGroup/:category" element={<SensitiveContent />} />
+      <Route path="/file-category/:ageGroup/:fileType" element={<FileCategoryDetails />} />
       <Route
         path="/"
         element={
@@ -628,6 +647,7 @@ function App() {
       <Routes>
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/sensitive-content/:ageGroup/:category" element={<SensitiveContent />} />
+        <Route path="/file-category/:ageGroup/:fileType" element={<FileCategoryDetails />} />
         <Route
           path="/"
           element={<AppContent />}
