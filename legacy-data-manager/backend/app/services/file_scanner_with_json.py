@@ -365,6 +365,35 @@ async def scan_files(source='local', path_or_drive_id='.', output_json='scan_rep
             logger.info(f"Found {len(sensitive_file_ids)} sensitive files")
             results["scan_complete"] = True
             
+            # --- ENRICH FILES WITH SENSITIVITY INFO ---
+            # Build a mapping from file_id to (category, confidence)
+            file_sensitivity = {}
+            for age_group in ["moreThanThreeYears", "oneToThreeYears", "lessThanOneYear"]:
+                for category, findings in results[age_group]["sensitive_info"].items():
+                    for finding in findings:
+                        file_info = finding.get("file")
+                        if file_info and "id" in file_info:
+                            file_id = file_info["id"]
+                            file_sensitivity[file_id] = {
+                                "sensitivityReason": category,
+                                "riskLevel": finding.get("confidence", 0.8),
+                                "explanation": finding.get("explanation", "")
+                            }
+            # Enrich each file in file_types
+            for age_group in ["moreThanThreeYears", "oneToThreeYears", "lessThanOneYear"]:
+                for file_type, files in results[age_group]["file_types"].items():
+                    for file in files:
+                        if isinstance(file, dict) and "id" in file:
+                            sens = file_sensitivity.get(file["id"])
+                            if sens:
+                                file["sensitivityReason"] = sens["sensitivityReason"]
+                                file["riskLevel"] = sens["riskLevel"]
+                                file["sensitivityExplanation"] = sens["explanation"]
+                            else:
+                                file["sensitivityReason"] = None
+                                file["riskLevel"] = None
+                                file["sensitivityExplanation"] = None
+            
         except Exception as e:
             logger.error(f"Error scanning files: {str(e)}")
             raise
