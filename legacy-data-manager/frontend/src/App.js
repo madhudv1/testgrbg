@@ -6,6 +6,9 @@ import DirectoryExplorer from './components/DirectoryExplorer';
 import Klio from './components/Klio';
 import SensitiveContent from './components/SensitiveContent';
 import FileCategoryDetails from './components/FileCategoryDetails';
+import FileInsightsDashboard from './components/FileInsightsDashboard';
+import RiskCategoryInsightsDashboard from './components/RiskCategoryInsightsDashboard';
+import ReviewSensitiveFiles from './components/ReviewSensitiveFiles';
 import './App.css';
 import config from './config';
 
@@ -21,7 +24,7 @@ function AppContent() {
   });
   const [typeSort, setTypeSort] = useState('count'); // 'count' or 'size'
   const [stats, setStats] = useState(() => {
-    return location.state?.stats || {
+    return location.state?.stats || JSON.parse(localStorage.getItem('stats')) || {
       docCount: 0,
       duplicateDocuments: 0,
       sensitiveDocuments: 0,
@@ -349,7 +352,7 @@ function AppContent() {
               Please run analysis first by using the analyze command in chat.
             </div>
           </div>
-        </div>
+    </div>
       );
     }
     
@@ -518,17 +521,29 @@ function AppContent() {
     }
   };
 
+  // Defensive rendering for missing context
+  if (!stats || !('docCount' in stats)) {
+    return (
+      <div className="sensitive-content-container">
+        <div className="error-message">
+          <p>Missing dashboard context. Please return to the dashboard and run analysis again.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Routes>
       <Route path="/auth/callback" element={<AuthCallback />} />
-      <Route path="/sensitive-content/:ageGroup/:category" element={<SensitiveContent />} />
-      <Route path="/file-category/:ageGroup/:fileType" element={<FileCategoryDetails />} />
+      <Route path="/sensitive-content/:ageGroup/:category" element={<RiskCategoryInsightsDashboard />} />
+      <Route path="/file-category/:ageGroup/:fileType" element={<FileInsightsDashboard />} />
+      <Route path="/review-sensitive-files" element={<ReviewSensitiveFiles />} />
       <Route
         path="/"
         element={
           <div className="app-container">
             <header className="app-header">
-              <h1>grbg.ai</h1>
+              <h1>Welcome to Papyrux</h1>
             </header>
             <div className="app-content">
               <div className="dashboard-section">
@@ -537,21 +552,21 @@ function AppContent() {
                   <div className="stats-grid">
                     <div className="stat-card" title="Total documents in this drive">
                       <div className="stat-number">
-                        {stats.docCount.toLocaleString()}
+                        {stats?.docCount != null ? stats.docCount.toLocaleString() : 0}
                         {stats.docCount > 0 && <span className="trend-up">↑</span>}
                       </div>
                       <div className="stat-label">Files scanned</div>
                     </div>
                     <div className="stat-card" title="Documents that may contain sensitive information">
                       <div className="stat-number">
-                        {stats.sensitiveDocuments.toLocaleString()}
+                        {stats?.sensitiveDocuments != null ? stats.sensitiveDocuments.toLocaleString() : 0}
                         {stats.sensitiveDocuments > 0 && <span className="trend-warning">!</span>}
                       </div>
                       <div className="stat-label">Sensitive documents</div>
                     </div>
                     <div className="stat-card" title="Documents with similar content or identical names">
                       <div className="stat-number">
-                        {stats.duplicateDocuments.toLocaleString()}
+                        {stats?.duplicateDocuments != null ? stats.duplicateDocuments.toLocaleString() : 0}
                         {stats.duplicateDocuments > 0 && <span className="trend-up">↑</span>}
                       </div>
                       <div className="stat-label">Duplicate documents</div>
@@ -646,8 +661,9 @@ function App() {
     <Router>
       <Routes>
         <Route path="/auth/callback" element={<AuthCallback />} />
-        <Route path="/sensitive-content/:ageGroup/:category" element={<SensitiveContent />} />
-        <Route path="/file-category/:ageGroup/:fileType" element={<FileCategoryDetails />} />
+        <Route path="/sensitive-content/:ageGroup/:category" element={<RiskCategoryInsightsDashboard />} />
+        <Route path="/file-category/:ageGroup/:fileType" element={<FileInsightsDashboard />} />
+        <Route path="/review-sensitive-files" element={<ReviewSensitiveFiles />} />
         <Route
           path="/"
           element={<AppContent />}

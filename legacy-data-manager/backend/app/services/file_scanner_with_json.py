@@ -320,13 +320,14 @@ async def scan_files(source='local', path_or_drive_id='.', output_json='scan_rep
                     type_counts[file_type] += 1
                     
                     # Add file to appropriate category
-                    results[age_group]["total_documents"] += 1
-                    results[age_group]["file_types"][file_type].append({
+                    file_dict = {
                         "id": file_id,
                         "name": name,
                         "mimeType": mime_type,
-                        "modifiedTime": file['modifiedTime']
-                    })
+                        "modifiedTime": file['modifiedTime'],
+                        "size": int(file.get('size', 0))
+                    }
+                    results[age_group]["file_types"][file_type].append(file_dict)
 
                     # Only scan content for text-based files
                     if file_type in ['documents', 'spreadsheets', 'presentations', 'pdfs']:
@@ -339,7 +340,6 @@ async def scan_files(source='local', path_or_drive_id='.', output_json='scan_rep
                                         results[age_group]["total_sensitive"] += 1
                                         sensitive_file_ids.add(file_id)
                                         results["total_sensitive_files"] += 1
-                                    
                                     for k, v in findings.items():
                                         if v:  # Only add if there are findings
                                             results[age_group]["sensitive_info"][k].append({
@@ -347,7 +347,8 @@ async def scan_files(source='local', path_or_drive_id='.', output_json='scan_rep
                                                     "id": file_id,
                                                     "name": name,
                                                     "mimeType": mime_type,
-                                                    "modifiedTime": file['modifiedTime']
+                                                    "modifiedTime": file['modifiedTime'],
+                                                    "size": int(file.get('size', 0))
                                                 },
                                                 "confidence": 0.8,
                                                 "explanation": f"Found {', '.join(v)}",
@@ -393,6 +394,17 @@ async def scan_files(source='local', path_or_drive_id='.', output_json='scan_rep
                                 file["sensitivityReason"] = None
                                 file["riskLevel"] = None
                                 file["sensitivityExplanation"] = None
+            # Set total_sensitive to unique files in any sensitive_info category
+            for age_group in ["moreThanThreeYears", "oneToThreeYears", "lessThanOneYear"]:
+                unique_sensitive_ids = set()
+                for category, findings in results[age_group]["sensitive_info"].items():
+                    for finding in findings:
+                        file_info = finding.get("file")
+                        if file_info and "id" in file_info:
+                            unique_sensitive_ids.add(file_info["id"])
+                            # Debug log file size
+                            logger.info(f"[DEBUG] Sensitive file - Age group: {age_group}, Category: {category}, Name: {file_info.get('name')}, Size: {file_info.get('size')}")
+                results[age_group]["total_sensitive"] = len(unique_sensitive_ids)
             
         except Exception as e:
             logger.error(f"Error scanning files: {str(e)}")

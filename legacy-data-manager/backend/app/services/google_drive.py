@@ -255,9 +255,9 @@ class GoogleDriveService:
             async with asyncio.timeout(5):  # 5 second timeout
                 result = await asyncio.to_thread(
                     lambda: self.service.files().get(
-                        fileId=file_id,
+            fileId=file_id,
                         fields="id, name, mimeType, modifiedTime, owners, lastModifyingUser, parents"
-                    ).execute()
+        ).execute()
                 )
             return result
         except asyncio.TimeoutError:

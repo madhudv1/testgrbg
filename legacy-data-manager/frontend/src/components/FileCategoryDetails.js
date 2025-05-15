@@ -4,6 +4,32 @@ import axios from 'axios';
 import config from '../config';
 import './SensitiveContent.css';
 
+const fileTypeIcons = {
+  documents: '📄',
+  spreadsheets: '📊',
+  presentations: '📈',
+  pdfs: '📕',
+  images: '🖼️',
+  videos: '🎬',
+  others: '📁',
+};
+
+function getFileIcon(type, mimeType) {
+  if (type && fileTypeIcons[type]) return fileTypeIcons[type];
+  if (mimeType && mimeType.includes('image')) return fileTypeIcons.images;
+  if (mimeType && mimeType.includes('video')) return fileTypeIcons.videos;
+  if (mimeType && mimeType.includes('spreadsheet')) return fileTypeIcons.spreadsheets;
+  if (mimeType && mimeType.includes('presentation')) return fileTypeIcons.presentations;
+  if (mimeType && mimeType.includes('pdf')) return fileTypeIcons.pdfs;
+  if (mimeType && mimeType.includes('document')) return fileTypeIcons.documents;
+  return fileTypeIcons.others;
+}
+
+function getInitials(name) {
+  if (!name) return '?';
+  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+}
+
 const FileCategoryDetails = () => {
   const { ageGroup, fileType } = useParams();
   const navigate = useNavigate();
@@ -112,6 +138,18 @@ const FileCategoryDetails = () => {
     });
   };
 
+  // Breadcrumbs
+  const breadcrumbs = [
+    selectedDirectory?.name || 'Drive',
+    ageGroup.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()),
+    fileType.charAt(0).toUpperCase() + fileType.slice(1)
+  ];
+
+  // Summary
+  const totalFiles = files.length;
+  const totalSize = files.reduce((sum, f) => sum + (parseInt(f.size) || 0), 0);
+  const owners = Array.from(new Set(files.map(f => f.owner)));
+
   if (loading) {
     return (
       <div className="sensitive-content-container">
@@ -135,79 +173,77 @@ const FileCategoryDetails = () => {
 
   return (
     <div className="sensitive-content-container">
-      <div className="sensitive-content-header">
-        <div className="header-left">
-          <button onClick={handleBack} className="back-button">
-            ← Back
-          </button>
-          <h2>{fileType.charAt(0).toUpperCase() + fileType.slice(1)} Files - {ageGroup}</h2>
-        </div>
-        <div className="action-buttons">
-          <button
-            className="action-button delete"
-            disabled={selectedFiles.size === 0}
-            onClick={() => handleAction('delete')}
-          >
-            Delete
-          </button>
-          <button
-            className="action-button archive"
-            disabled={selectedFiles.size === 0}
-            onClick={() => handleAction('archive')}
-          >
-            Archive
-          </button>
-          <button
-            className="action-button review"
-            disabled={selectedFiles.size === 0}
-            onClick={() => handleAction('review')}
-          >
-            Schedule Review
-          </button>
-        </div>
+      {/* Breadcrumbs */}
+      <div className="breadcrumb-bar">
+        <button onClick={handleBack} className="back-button" style={{marginRight: '1rem'}}>←</button>
+        {breadcrumbs.map((crumb, idx) => (
+          <span key={idx} className="breadcrumb">
+            {crumb}
+            {idx < breadcrumbs.length - 1 && <span className="breadcrumb-sep">›</span>}
+          </span>
+        ))}
       </div>
-
-      <div className="sensitive-content-table">
-        <table>
-          <thead>
-            <tr>
-              <th>
-                <input
-                  type="checkbox"
-                  checked={selectedFiles.size === files.length}
-                  onChange={handleSelectAll}
-                />
-              </th>
-              <th>File Name</th>
-              <th>Location</th>
-              <th>Last Modified</th>
-              <th>Owner</th>
-              <th>File Size</th>
-              <th>Type</th>
-            </tr>
-          </thead>
-          <tbody>
-            {files.map(file => (
-              <tr key={file.id} className={selectedFiles.has(file.id) ? 'selected' : ''}>
-                <td>
-                  <input
-                    type="checkbox"
-                    checked={selectedFiles.has(file.id)}
-                    onChange={() => handleSelectFile(file.id)}
-                  />
-                </td>
-                <td>{file.name}</td>
-                <td>{file.location}</td>
-                <td>{new Date(file.modifiedTime).toLocaleDateString()}</td>
-                <td>{file.owner}</td>
-                <td>{file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : '-'}</td>
-                <td>{file.mimeType || file.type || '-'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {/* Summary Bar */}
+      <div className="summary-bar">
+        <span><b>{totalFiles}</b> files</span>
+        <span>• <b>{owners.length}</b> owner{owners.length !== 1 ? 's' : ''}</span>
+        <span>• <b>{(totalSize / 1024 / 1024).toFixed(2)} MB</b> total</span>
       </div>
-
+      {/* Bulk Actions */}
+      {files.length > 0 && (
+        <div className="bulk-actions-bar">
+          <input
+            type="checkbox"
+            checked={selectedFiles.size === files.length}
+            onChange={handleSelectAll}
+          />
+          <span style={{marginLeft: 8, marginRight: 16}}>
+            {selectedFiles.size} selected
+          </span>
+          <button className="action-button" onClick={() => handleAction('archive')}>Archive</button>
+          <button className="action-button" onClick={() => handleAction('review')}>Schedule Review</button>
+          <button className="action-button" onClick={() => handleAction('delete')}>Delete</button>
+        </div>
+      )}
+      {/* File Card Grid */}
+      <div className="file-card-grid">
+        {files.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-illustration">📂</div>
+            <div>No files found in this category!</div>
+          </div>
+        ) : (
+          files.map(file => (
+            <div
+              key={file.id}
+              className={`file-card${selectedFiles.has(file.id) ? ' selected' : ''}`}
+              onClick={() => handleSelectFile(file.id)}
+            >
+              <div className="file-card-header">
+                <span className="file-icon">{getFileIcon(fileType, file.mimeType)}</span>
+                <span className="file-name">{file.name}</span>
+              </div>
+              <div className="file-card-meta">
+                <span className="file-owner-avatar">{getInitials(file.owner)}</span>
+                <span className="file-owner">{file.owner}</span>
+                <span className="file-date">{new Date(file.modifiedTime).toLocaleDateString()}</span>
+              </div>
+              <div className="file-card-footer">
+                <span className="file-size">{file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : '-'}</span>
+                <span className="file-type">{file.mimeType || file.type || '-'}</span>
+              </div>
+              <input
+                type="checkbox"
+                className="file-card-checkbox"
+                checked={selectedFiles.has(file.id)}
+                onChange={e => { e.stopPropagation(); handleSelectFile(file.id); }}
+                onClick={e => e.stopPropagation()}
+              />
+            </div>
+          ))
+        )}
+      </div>
+      {/* Pagination */}
       <div className="pagination">
         <button
           onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
